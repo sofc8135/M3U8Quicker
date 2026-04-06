@@ -83,6 +83,11 @@ export interface ChromeExtensionInstallResult {
   manual_url: string;
 }
 
+export interface FirefoxExtensionInstallResult {
+  extension_path: string;
+  manual_url: string;
+}
+
 export function deriveFilenameFromUrl(url: string): string {
   try {
     const parsed = new URL(url.trim());

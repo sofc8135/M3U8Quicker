@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   ChromeExtensionInstallResult,
+  FirefoxExtensionInstallResult,
   CreateDownloadParams,
   DownloadCounts,
   DownloadGroup,
@@ -88,6 +89,14 @@ export async function installChromeExtension(): Promise<ChromeExtensionInstallRe
 
 export async function openChromeExtensionsPage(): Promise<boolean> {
   return invoke<boolean>("open_chrome_extensions_page");
+}
+
+export async function installFirefoxExtension(): Promise<FirefoxExtensionInstallResult> {
+  return invoke<FirefoxExtensionInstallResult>("install_firefox_extension");
+}
+
+export async function openFirefoxAddonsPage(): Promise<boolean> {
+  return invoke<boolean>("open_firefox_addons_page");
 }
 
 export async function getAppSettings(): Promise<AppSettings> {

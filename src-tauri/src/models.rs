@@ -242,3 +242,9 @@ pub struct ChromeExtensionInstallResult {
     pub extension_path: String,
     pub manual_url: String,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FirefoxExtensionInstallResult {
+    pub extension_path: String,
+    pub manual_url: String,
+}

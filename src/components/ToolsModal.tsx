@@ -12,7 +12,8 @@ import { convertTsToMp4File, mergeTsFiles } from "../services/api";
 export type ToolAction =
   | "merge-ts"
   | "ts-to-mp4"
-  | "install-chrome-extension";
+  | "install-chrome-extension"
+  | "install-firefox-extension";
 
 interface ToolsModalProps {
   open: boolean;

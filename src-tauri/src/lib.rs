@@ -124,6 +124,8 @@ pub fn run() {
             commands::open_file_location,
             commands::install_chrome_extension,
             commands::open_chrome_extensions_page,
+            commands::install_firefox_extension,
+            commands::open_firefox_addons_page,
             commands::merge_ts_files,
             commands::convert_ts_to_mp4_file,
             commands::open_download_playback_session,

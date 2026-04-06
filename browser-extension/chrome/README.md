@@ -7,7 +7,7 @@
 1. 打开 `chrome://extensions/`
 2. 开启“开发者模式”
 3. 选择“加载已解压的扩展程序”
-4. 选择当前目录下的 `chrome-extension`
+4. 选择 `browser-extension/chrome` 目录
 
 行为说明：
 

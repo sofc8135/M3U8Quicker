@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button, Layout, Modal, Popconfirm, Space, Tabs, Typography, message, theme } from "antd";
 import { ChromeOutlined, ClearOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import { FirefoxIcon } from "./components/FirefoxIcon";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Toolbar } from "./components/Toolbar";
 import { DownloadList } from "./components/DownloadList";
@@ -11,10 +12,12 @@ import { useDownloads } from "./hooks/useDownloads";
 import {
   installChromeExtension,
   openChromeExtensionsPage,
+  installFirefoxExtension,
+  openFirefoxAddonsPage,
   openFileLocation,
   openDownloadPlaybackSession,
 } from "./services/api";
-import type { ChromeExtensionInstallResult } from "./types";
+import type { ChromeExtensionInstallResult, FirefoxExtensionInstallResult } from "./types";
 import type { ThemeMode } from "./types/settings";
 
 const { Header, Content } = Layout;
@@ -38,6 +41,8 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
   const [downloadDraft, setDownloadDraft] = useState<DownloadDraft | null>(null);
   const [chromeInstallGuide, setChromeInstallGuide] =
     useState<ChromeExtensionInstallResult | null>(null);
+  const [firefoxInstallGuide, setFirefoxInstallGuide] =
+    useState<FirefoxExtensionInstallResult | null>(null);
   const {
     counts,
     downloading,
@@ -185,6 +190,40 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
     }
   };
 
+  const handleInstallFirefoxExtension = async () => {
+    try {
+      const result = await installFirefoxExtension();
+      setFirefoxInstallGuide(result);
+    } catch (error) {
+      console.error("Failed to open firefox extension installer", error);
+      message.error(`打开安装引导失败: ${error}`);
+    }
+  };
+
+  const handleOpenFirefoxAddonsPage = async () => {
+    try {
+      const opened = await openFirefoxAddonsPage();
+      if (!opened) {
+        message.warning("未找到 Firefox，请手动打开附加组件页面");
+      }
+    } catch (error) {
+      console.error("Failed to open firefox addons page", error);
+      message.error(`打开 Firefox 附加组件页失败: ${error}`);
+    }
+  };
+
+  const handleOpenFirefoxExtensionFolder = async () => {
+    if (!firefoxInstallGuide) return;
+
+    try {
+      await openFileLocation(firefoxInstallGuide.extension_path);
+      message.success("扩展目录已打开");
+    } catch (error) {
+      console.error("Failed to open firefox extension folder", error);
+      message.error(`打开扩展目录失败: ${error}`);
+    }
+  };
+
   const tabItems = [
     {
       key: "downloading",
@@ -279,6 +318,10 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
           onOpenTool={(tool) => {
             if (tool === "install-chrome-extension") {
               void handleInstallChromeExtension();
+              return;
+            }
+            if (tool === "install-firefox-extension") {
+              void handleInstallFirefoxExtension();
               return;
             }
             setActiveTool(tool);
@@ -519,6 +562,214 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
                         }}
                       >
                         {chromeInstallGuide.extension_path}
+                      </Button>
+                    </div>
+                  </div>
+                </Space>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+      <Modal
+        title="安装 Firefox 扩展"
+        open={Boolean(firefoxInstallGuide)}
+        onCancel={() => setFirefoxInstallGuide(null)}
+        footer={null}
+        width={680}
+      >
+        {firefoxInstallGuide && (
+          <div style={{ marginTop: 12, display: "grid", gap: 16 }}>
+            <div
+              style={{
+                padding: "18px 20px",
+                borderRadius: 16,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                background: `linear-gradient(135deg, ${token.colorInfoBg} 0%, ${token.colorBgContainer} 100%)`,
+              }}
+            >
+              <Space align="start" size={14}>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "#ff7139",
+                    color: token.colorWhite,
+                    flex: "0 0 auto",
+                  }}
+                >
+                  <FirefoxIcon style={{ fontSize: 20 }} />
+                </div>
+                <div>
+                  <Typography.Title level={5} style={{ margin: 0 }}>
+                    请按以下 3 步完成 Firefox 扩展安装
+                  </Typography.Title>
+                </div>
+              </Space>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  padding: "16px 18px",
+                  borderRadius: 14,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  background: token.colorBgContainer,
+                }}
+              >
+                <Space
+                  align="start"
+                  size={14}
+                  style={{ width: "100%", justifyContent: "space-between" }}
+                >
+                  <Space align="start" size={12}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        background: token.colorPrimaryBg,
+                        color: token.colorPrimary,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 600,
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      1
+                    </div>
+                    <div>
+                      <Typography.Text strong>打开 Firefox 浏览器，在地址栏输入下面的地址并回车</Typography.Text>
+                      <Typography.Paragraph
+                        type="secondary"
+                        style={{ margin: "6px 0 0" }}
+                      >
+                        打开后会进入 Firefox 的临时附加组件调试页。
+                      </Typography.Paragraph>
+                      <div style={{ marginTop: 10 }}>
+                        <Typography.Text
+                          code
+                          copyable={{ text: firefoxInstallGuide.manual_url }}
+                        >
+                          {firefoxInstallGuide.manual_url}
+                        </Typography.Text>
+                      </div>
+                    </div>
+                  </Space>
+                  <Button
+                    type="primary"
+                    size="middle"
+                    icon={<FirefoxIcon />}
+                    aria-label="打开 Firefox 附加组件页"
+                    onClick={() => void handleOpenFirefoxAddonsPage()}
+                    style={{ height: 40, paddingInline: 18, background: "#ff7139", borderColor: "#ff7139" }}
+                  >
+                    打开Firefox
+                  </Button>
+                </Space>
+              </div>
+              <div
+                style={{
+                  padding: "16px 18px",
+                  borderRadius: 14,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  background: token.colorBgContainer,
+                }}
+              >
+                <Space align="start" size={12}>
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      background: token.colorPrimaryBg,
+                      color: token.colorPrimary,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 600,
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    2
+                  </div>
+                  <div>
+                    <Typography.Text strong>点击"加载临时附加组件..."按钮</Typography.Text>
+                    <Typography.Paragraph
+                      type="secondary"
+                      style={{ margin: "6px 0 0" }}
+                    >
+                      在页面中找到"临时扩展"区域，点击"加载临时附加组件..."。
+                    </Typography.Paragraph>
+                  </div>
+                </Space>
+              </div>
+              <div
+                style={{
+                  padding: "16px 18px",
+                  borderRadius: 14,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  background: token.colorBgContainer,
+                }}
+              >
+                <Space align="start" size={12}>
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 999,
+                      background: token.colorPrimaryBg,
+                      color: token.colorPrimary,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 600,
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    3
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <Typography.Text strong>
+                      在弹出的文件选择器中，选择下面目录中的 manifest.json 文件
+                    </Typography.Text>
+                    <Typography.Paragraph
+                      type="secondary"
+                      style={{ margin: "6px 0 0" }}
+                    >
+                      与 Chrome 不同，Firefox 需要选择目录中的 manifest.json 文件而非目录本身。
+                    </Typography.Paragraph>
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        background: token.colorFillQuaternary,
+                        border: `1px dashed ${token.colorBorder}`,
+                      }}
+                    >
+                      <Button
+                        type="link"
+                        icon={<FolderOpenOutlined />}
+                        onClick={() => void handleOpenFirefoxExtensionFolder()}
+                        style={{
+                          paddingInline: 0,
+                          height: "auto",
+                          whiteSpace: "normal",
+                          textAlign: "left",
+                        }}
+                      >
+                        {firefoxInstallGuide.extension_path}
                       </Button>
                     </div>
                   </div>

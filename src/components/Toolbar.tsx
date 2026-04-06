@@ -1,6 +1,7 @@
 import { Button, Dropdown, Space, Typography, theme } from "antd";
 import {
   ChromeOutlined,
+  GlobalOutlined,
   MergeCellsOutlined,
   DownOutlined,
   PlusOutlined,
@@ -11,6 +12,7 @@ import {
 } from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import type { ToolAction } from "./ToolsModal";
+import { FirefoxIcon } from "./FirefoxIcon";
 
 interface ToolbarProps {
   onNewDownload: () => void;
@@ -36,9 +38,21 @@ export function Toolbar({
       icon: <SwapOutlined />,
     },
     {
-      key: "install-chrome-extension",
-      label: "安装 Chrome 扩展",
-      icon: <ChromeOutlined />,
+      key: "install-browser-extension",
+      label: "安装浏览器扩展",
+      icon: <GlobalOutlined />,
+      children: [
+        {
+          key: "install-chrome-extension",
+          label: "Chrome 扩展",
+          icon: <ChromeOutlined />,
+        },
+        {
+          key: "install-firefox-extension",
+          label: "Firefox 扩展",
+          icon: <FirefoxIcon />,
+        },
+      ],
     },
   ];
 

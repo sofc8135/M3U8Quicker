@@ -120,7 +120,7 @@ origin:https://example.com
 
 - `src/`：React 前端界面与页面逻辑
 - `src-tauri/`：Tauri 桌面端与 Rust 后端实现
-- `chrome-extension/`：可选的 Chrome 扩展源码
+- `browser-extension/`：可选的浏览器扩展源码（`chrome/` 和 `firefox/` 子目录）
 - `test-hls-server/`：独立的 Rust 本地测试服务，用于把视频切成 `m3u8 + ts`
 - `public/`：静态资源
 
@@ -163,7 +163,7 @@ npm run tauri dev
 - 应用名称：`M3U8 Quicker`
 - 应用标识：`com.liubsyy.m3u8quicker`
 
-> 桌面应用打包时会把仓库根目录下的 `chrome-extension/` 一并作为资源打入安装包，因此安装后的应用仍然可以为扩展安装引导提供目标目录。
+> 桌面应用打包时会把仓库根目录下的 `browser-extension/chrome/` 一并作为资源打入安装包，因此安装后的应用仍然可以为扩展安装引导提供目标目录。
 
 ## License
 

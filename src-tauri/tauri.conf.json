@@ -26,7 +26,8 @@
   "bundle": {
     "active": true,
     "resources": {
-      "../chrome-extension/": "chrome-extension/"
+      "../browser-extension/chrome/": "chrome-extension/",
+      "../browser-extension/firefox/": "firefox-extension/"
     },
     "icon": [
       "icons/icon.png"

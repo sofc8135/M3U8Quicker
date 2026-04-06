@@ -18,6 +18,7 @@ use crate::persistence;
 use crate::state::AppState;
 
 const CHROME_EXTENSIONS_URL: &str = "chrome://extensions/";
+const FIREFOX_ADDONS_URL: &str = "about:debugging#/runtime/this-firefox";
 
 #[tauri::command]
 pub async fn create_download(
@@ -787,6 +788,23 @@ pub async fn open_chrome_extensions_page() -> Result<bool, AppError> {
 }
 
 #[tauri::command]
+pub async fn install_firefox_extension(
+    app_handle: AppHandle,
+) -> Result<FirefoxExtensionInstallResult, AppError> {
+    let extension_path = prepare_firefox_extension_install_dir(&app_handle).await?;
+
+    Ok(FirefoxExtensionInstallResult {
+        extension_path: normalize_display_path(&extension_path),
+        manual_url: FIREFOX_ADDONS_URL.to_string(),
+    })
+}
+
+#[tauri::command]
+pub async fn open_firefox_addons_page() -> Result<bool, AppError> {
+    Ok(try_open_firefox_addons_page())
+}
+
+#[tauri::command]
 pub async fn merge_ts_files(input_dir: String, output_path: String) -> Result<String, AppError> {
     let input_dir = PathBuf::from(input_dir.trim());
     let output_path = PathBuf::from(output_path.trim());
@@ -1373,7 +1391,8 @@ fn chrome_extension_dir_candidates(app_handle: &AppHandle) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     let workspace_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
-        .join("chrome-extension");
+        .join("browser-extension")
+        .join("chrome");
 
     if cfg!(debug_assertions) {
         candidates.push(workspace_candidate.clone());
@@ -1429,6 +1448,89 @@ fn normalize_display_path(path: &Path) -> String {
 #[cfg(not(target_os = "windows"))]
 fn normalize_display_path(path: &Path) -> String {
     path.to_string_lossy().to_string()
+}
+
+fn resolve_firefox_extension_dir(app_handle: &AppHandle) -> Result<PathBuf, AppError> {
+    resolve_firefox_extension_dir_from_candidates(firefox_extension_dir_candidates(app_handle))
+}
+
+#[cfg(target_os = "macos")]
+async fn prepare_firefox_extension_install_dir(app_handle: &AppHandle) -> Result<PathBuf, AppError> {
+    let source_dir = resolve_firefox_extension_dir(app_handle)?;
+    let target_dir = firefox_extension_install_target_dir()?;
+
+    let source_resolved = std::fs::canonicalize(&source_dir).unwrap_or(source_dir.clone());
+    let target_resolved = std::fs::canonicalize(&target_dir).unwrap_or(target_dir.clone());
+
+    if source_resolved == target_resolved {
+        return Ok(normalize_path_for_platform(target_resolved));
+    }
+
+    if target_dir.exists() {
+        if target_dir.is_dir() {
+            std::fs::remove_dir_all(&target_dir)?;
+        } else {
+            std::fs::remove_file(&target_dir)?;
+        }
+    }
+
+    copy_dir_recursive(&source_dir, &target_dir)?;
+    let copied_dir = std::fs::canonicalize(&target_dir).unwrap_or(target_dir);
+    Ok(normalize_path_for_platform(copied_dir))
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn prepare_firefox_extension_install_dir(app_handle: &AppHandle) -> Result<PathBuf, AppError> {
+    resolve_firefox_extension_dir(app_handle)
+}
+
+#[cfg(target_os = "macos")]
+fn firefox_extension_install_target_dir() -> Result<PathBuf, AppError> {
+    let download_dir = dirs::download_dir()
+        .or_else(|| dirs::home_dir().map(|home| home.join("Downloads")))
+        .ok_or_else(|| AppError::Internal("获取下载���录失败".to_string()))?;
+
+    Ok(download_dir
+        .join("M3U8 Quicker Extension")
+        .join("firefox-extension"))
+}
+
+fn firefox_extension_dir_candidates(app_handle: &AppHandle) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    let workspace_candidate = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("browser-extension")
+        .join("firefox");
+
+    if cfg!(debug_assertions) {
+        candidates.push(workspace_candidate.clone());
+    }
+
+    if let Ok(resource_dir) = app_handle.path().resource_dir() {
+        candidates.push(resource_dir.join("firefox-extension"));
+    }
+
+    if !cfg!(debug_assertions) {
+        candidates.push(workspace_candidate);
+    }
+
+    candidates
+}
+
+fn resolve_firefox_extension_dir_from_candidates<I>(candidates: I) -> Result<PathBuf, AppError>
+where
+    I: IntoIterator<Item = PathBuf>,
+{
+    for candidate in candidates {
+        if candidate.join("manifest.json").is_file() {
+            let resolved = std::fs::canonicalize(&candidate).unwrap_or(candidate);
+            return Ok(normalize_path_for_platform(resolved));
+        }
+    }
+
+    Err(AppError::InvalidInput(
+        "未找到内置 Firefox 扩展��录".to_string(),
+    ))
 }
 
 fn try_open_chrome_extensions_page() -> bool {
@@ -1505,6 +1607,80 @@ fn build_linux_chrome_command_candidates() -> Vec<OsString> {
     vec![
         OsString::from("google-chrome"),
         OsString::from("google-chrome-stable"),
+    ]
+}
+
+fn try_open_firefox_addons_page() -> bool {
+    firefox_command_candidates()
+        .iter()
+        .any(|command| open_firefox_addons_page_with_command(command))
+}
+
+fn open_firefox_addons_page_with_command(command: &OsStr) -> bool {
+    Command::new(command)
+        .arg(FIREFOX_ADDONS_URL)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .is_ok()
+}
+
+fn firefox_command_candidates() -> Vec<OsString> {
+    #[cfg(target_os = "windows")]
+    {
+        return build_windows_firefox_command_candidates(
+            std::env::var_os("ProgramFiles"),
+            std::env::var_os("ProgramFiles(x86)"),
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return build_macos_firefox_command_candidates();
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        return build_linux_firefox_command_candidates();
+    }
+
+    #[allow(unreachable_code)]
+    Vec::new()
+}
+
+#[cfg(target_os = "windows")]
+fn build_windows_firefox_command_candidates(
+    program_files: Option<OsString>,
+    program_files_x86: Option<OsString>,
+) -> Vec<OsString> {
+    let suffix = Path::new("Mozilla Firefox").join("firefox.exe");
+    let mut candidates = Vec::new();
+
+    for base in [program_files, program_files_x86]
+        .into_iter()
+        .flatten()
+    {
+        let candidate = PathBuf::from(base).join(&suffix);
+        if !candidates.iter().any(|existing| existing == candidate.as_os_str()) {
+            candidates.push(candidate.into_os_string());
+        }
+    }
+
+    candidates
+}
+
+#[cfg(target_os = "macos")]
+fn build_macos_firefox_command_candidates() -> Vec<OsString> {
+    vec![OsString::from(
+        "/Applications/Firefox.app/Contents/MacOS/firefox",
+    )]
+}
+
+#[cfg(target_os = "linux")]
+fn build_linux_firefox_command_candidates() -> Vec<OsString> {
+    vec![
+        OsString::from("firefox"),
     ]
 }
 
