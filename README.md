@@ -164,3 +164,7 @@ npm run tauri dev
 - 应用标识：`com.liubsyy.m3u8quicker`
 
 > 桌面应用打包时会把仓库根目录下的 `chrome-extension/` 一并作为资源打入安装包，因此安装后的应用仍然可以为扩展安装引导提供目标目录。
+
+## License
+
+本项目基于 Apache License 2.0 开源，详见仓库根目录下的 `LICENSE` 文件。
