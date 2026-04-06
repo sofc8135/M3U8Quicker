@@ -6,7 +6,7 @@
 
 **M3U8 Quicker** 是一个基于 `Tauri + Rust + React + TypeScript` 构建的桌面应用，用于下载、管理与播放 `M3U8` 视频，支持 Windows、macOS 和 Linux。
 
-项目同时包含一个可选的 Chrome 扩展：当网页中检测到 `.m3u8` 请求时，可以快速唤起桌面应用并预填下载信息。
+项目同时包含一个可选的 Chrome 扩展：自动检测网页中 `.m3u8` 视频，一键快捷新建下载任务并预填下载信息。
 
 ![下载主界面](./doc/img/download_main.png)
 
