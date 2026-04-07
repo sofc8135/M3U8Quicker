@@ -5,6 +5,19 @@ use std::collections::HashMap;
 pub type DownloadId = String;
 pub type RequestHeaders = HashMap<String, String>;
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FileType {
+    Hls,
+    Mp4,
+}
+
+impl Default for FileType {
+    fn default() -> Self {
+        FileType::Hls
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DownloadStatus {
     Pending,
@@ -22,6 +35,8 @@ pub struct DownloadTask {
     pub id: DownloadId,
     pub url: String,
     pub filename: String,
+    #[serde(default)]
+    pub file_type: FileType,
     #[serde(default)]
     pub encryption_method: Option<String>,
     pub output_dir: String,
@@ -82,6 +97,8 @@ pub struct CreateDownloadParams {
     pub filename: Option<String>,
     pub output_dir: Option<String>,
     pub extra_headers: Option<String>,
+    #[serde(default)]
+    pub file_type: FileType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -183,6 +200,8 @@ pub fn download_group_for_status(status: &DownloadStatus) -> DownloadGroup {
 pub struct DownloadTaskSummary {
     pub id: DownloadId,
     pub filename: String,
+    #[serde(default)]
+    pub file_type: FileType,
     pub encryption_method: Option<String>,
     pub output_dir: String,
     pub status: DownloadStatus,

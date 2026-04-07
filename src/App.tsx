@@ -30,6 +30,7 @@ const { Header, Content } = Layout;
 interface DownloadDraft {
   url: string;
   extraHeaders?: string;
+  fileType?: import("./types").FileType;
   nonce: number;
 }
 
@@ -386,6 +387,7 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
         open={modalOpen}
         initialUrl={downloadDraft?.url}
         initialExtraHeaders={downloadDraft?.extraHeaders}
+        initialFileType={downloadDraft?.fileType}
         resetKey={downloadDraft?.nonce ?? 0}
         onClose={() => setModalOpen(false)}
         onSubmit={async (params) => {
@@ -860,7 +862,9 @@ function parseDownloadDraft(deepLink: string): Omit<DownloadDraft, "nonce"> | nu
     }
 
     const extraHeaders = parsed.searchParams.get("extra_headers")?.trim() || undefined;
-    return { url, extraHeaders };
+    const rawFileType = parsed.searchParams.get("file_type")?.trim();
+    const fileType = rawFileType === "mp4" ? "mp4" as const : undefined;
+    return { url, extraHeaders, fileType };
   } catch (error) {
     console.debug("[m3u8quicker] failed to parse deep link", deepLink, error);
     return null;

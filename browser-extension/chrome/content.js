@@ -68,7 +68,7 @@
     const videos = document.getElementsByTagName("video");
     for (let i = 0; i < videos.length; i += 1) {
       const currentSrc = videos[i].currentSrc || videos[i].src || "";
-      if (currentSrc.indexOf(".m3u8") > -1) {
+      if (currentSrc.indexOf(".m3u8") > -1 || currentSrc.indexOf(".mp4") > -1) {
         reportDetection(currentSrc);
       }
     }
@@ -154,12 +154,27 @@
     }
   }
 
+
+  function detectFileType(url) {
+    try {
+      var pathname = new URL(url, window.location.href).pathname;
+      return /\.mp4$/i.test(pathname) ? "mp4" : "hls";
+    } catch (error) {
+      return /\.mp4(?:$|[?#])/i.test(url) ? "mp4" : "hls";
+    }
+  }
+
   function registerTarget(rawUrl, normalizedUrl) {
     latestTarget = normalizedUrl;
     if (!detectedTargets.find((item) => item.url === normalizedUrl)) {
+      var type = detectFileType(rawUrl);
+      var fallback = type === "mp4"
+        ? `video-${detectedTargets.length + 1}.mp4`
+        : `m3u8-${detectedTargets.length + 1}.m3u8`;
       detectedTargets.push({
         url: normalizedUrl,
-        fileName: getFileName(rawUrl, `m3u8-${detectedTargets.length + 1}.m3u8`)
+        fileName: getFileName(rawUrl, fallback),
+        fileType: type
       });
     }
 
@@ -254,7 +269,8 @@
 
   function onButtonClick() {
     if (detectedTargets.length <= 1) {
-      openDownloader(latestTarget);
+      var target = detectedTargets[0];
+      openDownloader(latestTarget, target ? target.fileType : "hls");
       return;
     }
 
@@ -289,7 +305,7 @@
     header.style.marginBottom = "10px";
 
     const title = document.createElement("div");
-    title.textContent = "选择要下载的 m3u8";
+    title.textContent = "选择要下载的视频";
     title.style.color = "#17324d";
     title.style.fontSize = "13px";
     title.style.fontWeight = "700";
@@ -332,7 +348,7 @@
       entry.style.overflowWrap = "anywhere";
       entry.style.cursor = "pointer";
       entry.addEventListener("click", () => {
-        openDownloader(item.url);
+        openDownloader(item.url, item.fileType || "hls");
         panel.remove();
       });
       panel.appendChild(entry);
@@ -341,13 +357,16 @@
     getUiRoot().appendChild(panel);
   }
 
-  function openDownloader(target) {
+  function openDownloader(target, fileType) {
     if (!target) {
       return;
     }
     const params = new URLSearchParams({
       url: target,
     });
+    if (fileType && fileType !== "hls") {
+      params.set("file_type", fileType);
+    }
     const extraHeaders = buildExtraHeaders();
     if (extraHeaders) {
       params.set("extra_headers", extraHeaders);

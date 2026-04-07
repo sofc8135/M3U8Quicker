@@ -10,9 +10,12 @@ export type DownloadStatus =
 
 export type DownloadGroup = "active" | "history";
 
+export type FileType = "hls" | "mp4";
+
 export interface DownloadTaskSummary {
   id: string;
   filename: string;
+  file_type: FileType;
   encryption_method: string | null;
   output_dir: string;
   status: DownloadStatus;
@@ -65,6 +68,7 @@ export interface CreateDownloadParams {
   filename?: string;
   output_dir?: string;
   extra_headers?: string;
+  file_type?: FileType;
 }
 
 export interface OpenPlaybackSessionResponse {

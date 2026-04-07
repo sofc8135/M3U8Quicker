@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
-import { Modal, Form, Input, Button, Space, message } from "antd";
+import { Modal, Form, Input, Button, Space, Radio, message } from "antd";
 import { FolderOpenOutlined } from "@ant-design/icons";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getDefaultDownloadDir, setDefaultDownloadDir } from "../services/api";
-import { deriveFilenameFromUrl, type CreateDownloadParams } from "../types";
+import { deriveFilenameFromUrl, type CreateDownloadParams, type FileType } from "../types";
 
 interface NewDownloadModalProps {
   open: boolean;
   initialUrl?: string;
   initialExtraHeaders?: string;
+  initialFileType?: FileType;
   resetKey?: number;
   onClose: () => void;
   onSubmit: (params: CreateDownloadParams) => Promise<void>;
@@ -18,6 +19,7 @@ export function NewDownloadModal({
   open: isOpen,
   initialUrl,
   initialExtraHeaders,
+  initialFileType,
   resetKey,
   onClose,
   onSubmit,
@@ -26,19 +28,23 @@ export function NewDownloadModal({
   const [submitting, setSubmitting] = useState(false);
   const [outputDir, setOutputDir] = useState("");
   const [filenameTouched, setFilenameTouched] = useState(false);
+  const [fileType, setFileType] = useState<FileType>("hls");
 
   useEffect(() => {
     if (isOpen) {
       getDefaultDownloadDir().then(setOutputDir);
       setFilenameTouched(false);
+      const type = initialFileType || "hls";
+      setFileType(type);
       form.resetFields();
       form.setFieldsValue({
         url: initialUrl || undefined,
         filename: initialUrl ? deriveFilenameFromUrl(initialUrl) || undefined : undefined,
         extra_headers: initialExtraHeaders || undefined,
+        file_type: type,
       });
     }
-  }, [form, initialExtraHeaders, initialUrl, isOpen, resetKey]);
+  }, [form, initialExtraHeaders, initialFileType, initialUrl, isOpen, resetKey]);
 
   const handleSelectDir = async () => {
     const selected = await open({
@@ -68,6 +74,7 @@ export function NewDownloadModal({
         filename: values.filename?.trim() || undefined,
         output_dir: outputDir || undefined,
         extra_headers: values.extra_headers?.trim() || undefined,
+        file_type: fileType,
       });
       message.success("下载已开始");
     } catch (e: unknown) {
@@ -88,13 +95,22 @@ export function NewDownloadModal({
       width={520}
     >
       <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form.Item name="file_type" label="文件类型">
+          <Radio.Group
+            value={fileType}
+            onChange={(e) => setFileType(e.target.value)}
+          >
+            <Radio.Button value="hls">HLS</Radio.Button>
+            <Radio.Button value="mp4">MP4</Radio.Button>
+          </Radio.Group>
+        </Form.Item>
         <Form.Item
           name="url"
-          label="M3U8 地址"
-          rules={[{ required: true, message: "请输入 M3U8 地址" }]}
+          label={fileType === "mp4" ? "MP4 地址" : "M3U8 地址"}
+          rules={[{ required: true, message: fileType === "mp4" ? "请输入 MP4 地址" : "请输入 M3U8 地址" }]}
         >
           <Input.TextArea
-            placeholder="https://example.com/video/playlist.m3u8"
+            placeholder={fileType === "mp4" ? "https://example.com/video/file.mp4" : "https://example.com/video/playlist.m3u8"}
             rows={3}
             autoFocus
             onChange={(event) => handleUrlChange(event.target.value)}

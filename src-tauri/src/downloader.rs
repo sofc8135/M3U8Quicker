@@ -1246,6 +1246,89 @@ pub async fn merge_ts_files_in_dir(input_dir: &Path, output_path: &Path) -> Resu
     merge_files(&files, output_path).await
 }
 
+pub async fn run_mp4_download(
+    app_handle: AppHandle,
+    downloads: Arc<Mutex<HashMap<DownloadId, DownloadTask>>>,
+    client: Arc<RwLock<reqwest::Client>>,
+    task_id: DownloadId,
+    url: String,
+    headers: Arc<RequestHeaders>,
+    output_dir: PathBuf,
+    filename: String,
+    cancel_token: CancellationToken,
+) -> Result<DownloadRunOutcome, AppError> {
+    let mp4_filename = ensure_extension(&filename, "mp4");
+    let mp4_path = resolve_available_output_path(&output_dir, &mp4_filename);
+    let partial_path = mp4_path.with_extension("mp4.partial");
+
+    let client = client.read().await.clone();
+    let response = build_request_with_headers(&client, &url, &headers)
+        .send()
+        .await?
+        .error_for_status()?;
+
+    let content_length = response.content_length().unwrap_or(0);
+    let mut stream = response.bytes_stream();
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&partial_path)
+        .await?;
+
+    let mut downloaded: u64 = 0;
+    let mut last_report = Instant::now();
+    let mut last_report_bytes: u64 = 0;
+
+    while let Some(chunk) = tokio::select! {
+        chunk = stream.next() => chunk,
+        _ = cancel_token.cancelled() => {
+            let _ = tokio::fs::remove_file(&partial_path).await;
+            return Err(AppError::Cancelled);
+        }
+    } {
+        let chunk = chunk.map_err(|e| AppError::Network(e.to_string()))?;
+        file.write_all(&chunk).await?;
+        downloaded += chunk.len() as u64;
+
+        if last_report.elapsed() >= Duration::from_secs(1) {
+            let speed = downloaded.saturating_sub(last_report_bytes);
+            last_report_bytes = downloaded;
+            last_report = Instant::now();
+
+            let total_segments = if content_length > 0 { 100 } else { 0 };
+            let completed_segments = if content_length > 0 {
+                ((downloaded as f64 / content_length as f64) * 100.0).min(100.0) as usize
+            } else {
+                0
+            };
+
+            emit_progress(
+                &app_handle,
+                &downloads,
+                RuntimeProgressSnapshot {
+                    id: task_id.clone(),
+                    status: DownloadStatus::Downloading,
+                    completed_segments,
+                    total_segments,
+                    completed_segment_indices: Vec::new(),
+                    failed_segment_indices: Vec::new(),
+                    total_bytes: downloaded,
+                    speed_bytes_per_sec: speed,
+                    updated_at: Utc::now().to_rfc3339(),
+                },
+            )
+            .await;
+        }
+    }
+
+    file.flush().await?;
+    drop(file);
+    tokio::fs::rename(&partial_path, &mp4_path).await?;
+
+    Ok(DownloadRunOutcome::Completed(mp4_path))
+}
+
 pub async fn convert_ts_to_mp4_file(
     ts_path: &Path,
     mp4_path: &Path,

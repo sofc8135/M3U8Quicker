@@ -288,9 +288,26 @@ export function DownloadList({
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
               lineHeight: 1.5715,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
             }}
           >
-            {record.filename}
+            <Tag
+              color={record.file_type === "mp4" ? "blue" : "cyan"}
+              style={{ marginInlineEnd: 0, flexShrink: 0 }}
+            >
+              {record.file_type === "mp4" ? "MP4" : "HLS"}
+            </Tag>
+            <span
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {record.filename}
+            </span>
           </div>
           {record.encryption_method && (
             <Typography.Text
@@ -332,19 +349,25 @@ export function DownloadList({
             }
           />
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            <Space size={4}>
-              {renderCompletedSegmentsPopover(record)}
-              <span>
-                {record.completed_segments}/{record.total_segments} 片段
-              </span>
-              {record.failed_segment_count > 0 ? (
-                <span style={{ color: "#cf1322" }}>
-                  失败 {record.failed_segment_count} 片
-                </span>
-              ) : null}
-            </Space>
-            {" | "}
-            {formatBytes(record.total_bytes)}
+            {record.file_type === "mp4" ? (
+              <span>{formatBytes(record.total_bytes)}</span>
+            ) : (
+              <>
+                <Space size={4}>
+                  {renderCompletedSegmentsPopover(record)}
+                  <span>
+                    {record.completed_segments}/{record.total_segments} 片段
+                  </span>
+                  {record.failed_segment_count > 0 ? (
+                    <span style={{ color: "#cf1322" }}>
+                      失败 {record.failed_segment_count} 片
+                    </span>
+                  ) : null}
+                </Space>
+                {" | "}
+                {formatBytes(record.total_bytes)}
+              </>
+            )}
           </Typography.Text>
         </div>
       ),

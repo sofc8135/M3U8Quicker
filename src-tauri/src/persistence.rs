@@ -160,6 +160,7 @@ pub fn task_to_summary(task: &DownloadTask) -> DownloadTaskSummary {
     DownloadTaskSummary {
         id: task.id.clone(),
         filename: task.filename.clone(),
+        file_type: task.file_type,
         encryption_method: task.encryption_method.clone(),
         output_dir: task.output_dir.clone(),
         status: task.status.clone(),
@@ -193,6 +194,7 @@ fn task_from_parts(
         id: summary.id,
         url: detail.url,
         filename: summary.filename,
+        file_type: summary.file_type,
         encryption_method: summary.encryption_method,
         output_dir: summary.output_dir,
         extra_headers: detail.extra_headers,

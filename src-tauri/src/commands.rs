@@ -30,12 +30,7 @@ pub async fn create_download(
     let id = Uuid::new_v4().to_string();
     let client = state.http_client.read().await.clone();
     let request_headers = parse_request_headers(params.extra_headers.as_deref())?;
-
-    let mut segments: Vec<crate::models::SegmentInfo> =
-        downloader::resolve_m3u8(&client, &params.url, &request_headers).await?;
-
-    // Fetch encryption keys if any segments are encrypted
-    downloader::fetch_encryption_keys(&client, &mut segments, &request_headers).await?;
+    let file_type = params.file_type;
 
     let output_dir =
         if let Some(output_dir) = params.output_dir.filter(|dir| !dir.trim().is_empty()) {
@@ -63,49 +58,101 @@ pub async fn create_download(
     tokio::fs::create_dir_all(&output_dir).await?;
 
     let created_at = Utc::now();
-    let task = DownloadTask {
-        id: id.clone(),
-        url: params.url.clone(),
-        filename: filename.clone(),
-        encryption_method: detect_encryption_method(&segments),
-        output_dir: output_dir.clone(),
-        extra_headers: params.extra_headers.clone(),
-        status: DownloadStatus::Downloading,
-        total_segments: segments.len(),
-        completed_segments: 0,
-        completed_segment_indices: Vec::new(),
-        failed_segment_indices: Vec::new(),
-        segment_uris: segment_uris(&segments),
-        segment_durations: segment_durations(&segments),
-        total_bytes: 0,
-        speed_bytes_per_sec: 0,
-        created_at,
-        completed_at: None,
-        updated_at: Some(created_at),
-        file_path: None,
-    };
 
-    {
-        let mut downloads = state.downloads.lock().await;
-        downloads.insert(id.clone(), task.clone());
+    match file_type {
+        FileType::Mp4 => {
+            let task = DownloadTask {
+                id: id.clone(),
+                url: params.url.clone(),
+                filename: filename.clone(),
+                file_type: FileType::Mp4,
+                encryption_method: None,
+                output_dir: output_dir.clone(),
+                extra_headers: params.extra_headers.clone(),
+                status: DownloadStatus::Downloading,
+                total_segments: 0,
+                completed_segments: 0,
+                completed_segment_indices: Vec::new(),
+                failed_segment_indices: Vec::new(),
+                segment_uris: Vec::new(),
+                segment_durations: Vec::new(),
+                total_bytes: 0,
+                speed_bytes_per_sec: 0,
+                created_at,
+                completed_at: None,
+                updated_at: Some(created_at),
+                file_path: None,
+            };
+
+            {
+                let mut downloads = state.downloads.lock().await;
+                downloads.insert(id.clone(), task.clone());
+            }
+            persistence::save_task(&app_handle, &task).await?;
+
+            start_mp4_download_worker(
+                app_handle.clone(),
+                state.downloads.clone(),
+                state.cancel_tokens.clone(),
+                state.http_client.clone(),
+                task.clone(),
+                request_headers,
+            )
+            .await;
+
+            Ok(persistence::task_to_summary(&task))
+        }
+        FileType::Hls => {
+            let mut segments: Vec<crate::models::SegmentInfo> =
+                downloader::resolve_m3u8(&client, &params.url, &request_headers).await?;
+            downloader::fetch_encryption_keys(&client, &mut segments, &request_headers).await?;
+
+            let task = DownloadTask {
+                id: id.clone(),
+                url: params.url.clone(),
+                filename: filename.clone(),
+                file_type: FileType::Hls,
+                encryption_method: detect_encryption_method(&segments),
+                output_dir: output_dir.clone(),
+                extra_headers: params.extra_headers.clone(),
+                status: DownloadStatus::Downloading,
+                total_segments: segments.len(),
+                completed_segments: 0,
+                completed_segment_indices: Vec::new(),
+                failed_segment_indices: Vec::new(),
+                segment_uris: segment_uris(&segments),
+                segment_durations: segment_durations(&segments),
+                total_bytes: 0,
+                speed_bytes_per_sec: 0,
+                created_at,
+                completed_at: None,
+                updated_at: Some(created_at),
+                file_path: None,
+            };
+
+            {
+                let mut downloads = state.downloads.lock().await;
+                downloads.insert(id.clone(), task.clone());
+            }
+            persistence::save_task(&app_handle, &task).await?;
+
+            start_download_worker(
+                app_handle.clone(),
+                state.downloads.clone(),
+                state.cancel_tokens.clone(),
+                state.playback_sessions.clone(),
+                state.download_priorities.clone(),
+                state.http_client.clone(),
+                task.clone(),
+                segments,
+                request_headers,
+                state.max_concurrent_segments.clone(),
+            )
+            .await;
+
+            Ok(persistence::task_to_summary(&task))
+        }
     }
-    persistence::save_task(&app_handle, &task).await?;
-
-    start_download_worker(
-        app_handle.clone(),
-        state.downloads.clone(),
-        state.cancel_tokens.clone(),
-        state.playback_sessions.clone(),
-        state.download_priorities.clone(),
-        state.http_client.clone(),
-        task.clone(),
-        segments,
-        request_headers,
-        state.max_concurrent_segments.clone(),
-    )
-    .await;
-
-    Ok(persistence::task_to_summary(&task))
 }
 
 #[tauri::command]
@@ -172,8 +219,41 @@ pub async fn resume_download(
         }
     }
 
-    let client = state.http_client.read().await.clone();
     let request_headers = parse_request_headers(task.extra_headers.as_deref())?;
+
+    if task.file_type == FileType::Mp4 {
+        let updated_task = {
+            let mut downloads = state.downloads.lock().await;
+            downloads.entry(id.clone()).or_insert_with(|| task.clone());
+            let task = downloads
+                .get_mut(&id)
+                .ok_or_else(|| AppError::InvalidInput(format!("Download {} not found", id)))?;
+            task.status = DownloadStatus::Downloading;
+            task.speed_bytes_per_sec = 0;
+            task.completed_at = None;
+            task.file_path = None;
+            task.touch();
+            task.clone()
+        };
+
+        persistence::save_task(&app_handle, &updated_task).await?;
+        let progress = task_to_progress(&updated_task);
+        let _ = app_handle.emit("download-progress", &progress);
+
+        start_mp4_download_worker(
+            app_handle.clone(),
+            state.downloads.clone(),
+            state.cancel_tokens.clone(),
+            state.http_client.clone(),
+            updated_task.clone(),
+            request_headers,
+        )
+        .await;
+
+        return Ok(persistence::task_to_summary(&updated_task));
+    }
+
+    let client = state.http_client.read().await.clone();
     let mut segments = downloader::resolve_m3u8(&client, &task.url, &request_headers).await?;
     validate_segment_layout(&task, &segments)?;
     downloader::fetch_encryption_keys(&client, &mut segments, &request_headers).await?;
@@ -1086,6 +1166,127 @@ async fn get_active_downloads_page(
         page: safe_page,
         page_size: safe_page_size,
     }
+}
+
+async fn start_mp4_download_worker(
+    app_handle: AppHandle,
+    state_downloads: Arc<Mutex<HashMap<DownloadId, DownloadTask>>>,
+    state_cancel_tokens: Arc<Mutex<HashMap<DownloadId, CancellationToken>>>,
+    client: Arc<RwLock<reqwest::Client>>,
+    task: DownloadTask,
+    request_headers: RequestHeaders,
+) {
+    let task_id = task.id.clone();
+    let output_dir_path = PathBuf::from(&task.output_dir);
+    let filename = task.filename.clone();
+    let url = task.url.clone();
+    let cancel_token = CancellationToken::new();
+
+    {
+        let mut tokens = state_cancel_tokens.lock().await;
+        tokens.insert(task_id.clone(), cancel_token.clone());
+    }
+
+    tokio::spawn(async move {
+        let result = downloader::run_mp4_download(
+            app_handle.clone(),
+            state_downloads.clone(),
+            client,
+            task_id.clone(),
+            url,
+            Arc::new(request_headers),
+            output_dir_path,
+            filename,
+            cancel_token.clone(),
+        )
+        .await;
+
+        let mut should_save = false;
+        let mut progress_to_emit = None;
+        let mut remove_from_runtime = false;
+
+        {
+            let mut downloads = state_downloads.lock().await;
+            if let Some(task) = downloads.get_mut(&task_id) {
+                match result {
+                    Ok(downloader::DownloadRunOutcome::Completed(final_path)) => {
+                        let completed_at = Utc::now();
+                        task.status = DownloadStatus::Completed;
+                        task.completed_at = Some(completed_at);
+                        task.updated_at = Some(completed_at);
+                        task.speed_bytes_per_sec = 0;
+                        task.file_path = Some(final_path.to_string_lossy().to_string());
+                        if let Some(name) = final_path.file_name() {
+                            task.filename = name.to_string_lossy().to_string();
+                        }
+                        progress_to_emit = Some(task_to_progress(task));
+                        should_save = true;
+                        remove_from_runtime = true;
+                    }
+                    Ok(downloader::DownloadRunOutcome::Incomplete) => {
+                        task.speed_bytes_per_sec = 0;
+                        task.touch();
+                        progress_to_emit = Some(task_to_progress(task));
+                        should_save = true;
+                    }
+                    Err(AppError::Cancelled) => {
+                        task.speed_bytes_per_sec = 0;
+                        if task.status == DownloadStatus::Paused
+                            || task.status == DownloadStatus::Cancelled
+                        {
+                            task.touch();
+                            progress_to_emit = Some(task_to_progress(task));
+                            should_save = true;
+                        } else {
+                            task.status = DownloadStatus::Cancelled;
+                            task.touch();
+                            progress_to_emit = Some(task_to_progress(task));
+                            should_save = true;
+                            remove_from_runtime = true;
+                        }
+                    }
+                    Err(error) => {
+                        if task.status != DownloadStatus::Cancelled {
+                            task.status = DownloadStatus::Failed(error.to_string());
+                        }
+                        task.speed_bytes_per_sec = 0;
+                        task.touch();
+                        progress_to_emit = Some(task_to_progress(task));
+                        should_save = true;
+                        remove_from_runtime = true;
+                    }
+                }
+            }
+        }
+
+        if let Some(progress) = progress_to_emit {
+            let _ = app_handle.emit("download-progress", &progress);
+        }
+        if should_save {
+            let task = {
+                let downloads = state_downloads.lock().await;
+                downloads.get(&task_id).cloned()
+            };
+
+            if let Some(task) = task {
+                let _ = persistence::save_task(&app_handle, &task).await;
+            }
+        }
+        if remove_from_runtime {
+            let mut downloads = state_downloads.lock().await;
+            downloads.remove(&task_id);
+        }
+
+        let final_status = {
+            let downloads = state_downloads.lock().await;
+            downloads.get(&task_id).map(|task| task.status.clone())
+        };
+
+        if !matches!(final_status, Some(DownloadStatus::Downloading)) {
+            let mut tokens = state_cancel_tokens.lock().await;
+            tokens.remove(&task_id);
+        }
+    });
 }
 
 async fn start_download_worker(
