@@ -1259,9 +1259,6 @@ async fn start_mp4_download_worker(
             }
         }
 
-        if let Some(progress) = progress_to_emit {
-            let _ = app_handle.emit("download-progress", &progress);
-        }
         if should_save {
             let task = {
                 let downloads = state_downloads.lock().await;
@@ -1275,6 +1272,10 @@ async fn start_mp4_download_worker(
         if remove_from_runtime {
             let mut downloads = state_downloads.lock().await;
             downloads.remove(&task_id);
+        }
+
+        if let Some(progress) = progress_to_emit {
+            let _ = app_handle.emit("download-progress", &progress);
         }
 
         let final_status = {
