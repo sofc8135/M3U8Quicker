@@ -94,7 +94,12 @@ export function NewDownloadModal({
       destroyOnClose
       width={520}
     >
-      <Form form={form} layout="vertical" onFinish={handleSubmit}>
+      <Form
+        form={form}
+        layout="vertical"
+        className="new-download-form"
+        onFinish={handleSubmit}
+      >
         <Form.Item name="file_type" label="文件类型">
           <Radio.Group
             value={fileType}
@@ -128,11 +133,12 @@ export function NewDownloadModal({
         <Form.Item
           name="extra_headers"
           label="附加 Header"
-          extra="按行输入，每行一个 header，例如 referer:https://www.xx.com"
         >
           <Input.TextArea
-            placeholder={"referer:https://www.xx.com\norigin:https://www.xx.com"}
-            rows={4}
+            placeholder={
+              "按行输入，每行一个 header\nreferer:https://www.xx.com\norigin:https://www.xx.com"
+            }
+            rows={3}
           />
         </Form.Item>
         <Form.Item label="保存目录">

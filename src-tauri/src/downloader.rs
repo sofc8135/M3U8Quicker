@@ -24,6 +24,9 @@ type Aes128CbcDec = cbc::Decryptor<Aes128>;
 type Aes192CbcDec = cbc::Decryptor<Aes192>;
 type Aes256CbcDec = cbc::Decryptor<Aes256>;
 
+const M3U8_METADATA_TIMEOUT: Duration = Duration::from_secs(5);
+const VIDEO_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+
 pub enum DownloadRunOutcome {
     Completed(PathBuf),
     Incomplete,
@@ -56,7 +59,7 @@ struct PersistThrottleState {
 pub fn build_http_client(proxy_url: Option<&str>) -> Result<reqwest::Client, AppError> {
     let mut builder = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) M3U8Quicker/0.1")
-        .timeout(std::time::Duration::from_secs(30));
+        .timeout(VIDEO_DOWNLOAD_TIMEOUT);
 
     if let Some(url) = proxy_url.filter(|value| !value.trim().is_empty()) {
         let proxy = reqwest::Proxy::all(url.trim())
@@ -104,6 +107,7 @@ pub fn resolve_m3u8<'a>(
     Box::pin(async move {
         let base_url = Url::parse(&url)?;
         let response = build_request_with_headers(client, &url, headers)
+            .timeout(M3U8_METADATA_TIMEOUT)
             .send()
             .await?
             .error_for_status()?;
@@ -227,6 +231,7 @@ pub async fn fetch_encryption_keys(
         if let Some(ref mut enc) = seg.encryption {
             if !key_cache.contains_key(&enc.key_uri) {
                 let resp = build_request_with_headers(client, &enc.key_uri, headers)
+                    .timeout(M3U8_METADATA_TIMEOUT)
                     .send()
                     .await?
                     .error_for_status()?;

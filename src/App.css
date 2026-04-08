@@ -48,3 +48,7 @@ body,
 .ant-table-tbody > tr > td {
   border-bottom-color: var(--app-table-border) !important;
 }
+
+.new-download-form .ant-form-item {
+  margin-bottom: 14px;
+}

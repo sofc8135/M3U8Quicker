@@ -995,13 +995,14 @@ fn token_suffix(token: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::DownloadTask;
+    use crate::models::{DownloadTask, FileType};
 
     fn build_task(status: DownloadStatus) -> DownloadTask {
         DownloadTask {
             id: "task-1".to_string(),
             url: "https://example.com/video.m3u8".to_string(),
             filename: "video".to_string(),
+            file_type: FileType::Hls,
             encryption_method: None,
             output_dir: "D:\\Downloads".to_string(),
             extra_headers: None,

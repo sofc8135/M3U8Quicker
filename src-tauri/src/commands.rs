@@ -1947,6 +1947,7 @@ mod tests {
             id: "task-id".to_string(),
             url: "https://example.com/video.m3u8".to_string(),
             filename: "video".to_string(),
+            file_type: FileType::Hls,
             encryption_method: None,
             output_dir: "D:\\Download".to_string(),
             extra_headers: None,
