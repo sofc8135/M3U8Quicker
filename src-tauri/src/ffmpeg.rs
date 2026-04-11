@@ -11,6 +11,8 @@ use crate::state::AppState;
 const SUBTITLE_TRACK_HEIGHT_RATIO_NUMERATOR: u32 = 22;
 const SUBTITLE_TRACK_HEIGHT_RATIO_DENOMINATOR: u32 = 100;
 const MIN_SUBTITLE_TRACK_HEIGHT: u32 = 128;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct SubtitleCue {
@@ -61,8 +63,15 @@ fn ffmpeg_binary_path(app_handle: &AppHandle) -> PathBuf {
     ffmpeg_dir(app_handle).join(ffmpeg_binary_name())
 }
 
+fn configure_background_command(command: &mut tokio::process::Command) {
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
 async fn probe_ffmpeg_version(path: &Path) -> Option<String> {
-    let output = tokio::process::Command::new(path)
+    let mut command = tokio::process::Command::new(path);
+    configure_background_command(&mut command);
+    let output = command
         .arg("-version")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -101,7 +110,9 @@ async fn detect_at_path(path: &Path) -> Option<FfmpegStatus> {
 }
 
 async fn detect_system_ffmpeg() -> Option<FfmpegStatus> {
-    let output = tokio::process::Command::new("ffmpeg")
+    let mut command = tokio::process::Command::new("ffmpeg");
+    configure_background_command(&mut command);
+    let output = command
         .arg("-version")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -133,7 +144,9 @@ async fn detect_system_ffmpeg() -> Option<FfmpegStatus> {
     } else {
         "which"
     };
-    let resolved_path = tokio::process::Command::new(which_cmd)
+    let mut which_command = tokio::process::Command::new(which_cmd);
+    configure_background_command(&mut which_command);
+    let resolved_path = which_command
         .arg("ffmpeg")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
@@ -277,7 +290,9 @@ pub async fn convert_ts_to_mp4(
     ts_path: &Path,
     mp4_path: &Path,
 ) -> Result<(), AppError> {
-    let output = tokio::process::Command::new(ffmpeg_path)
+    let mut command = tokio::process::Command::new(ffmpeg_path);
+    configure_background_command(&mut command);
+    let output = command
         .args(["-y", "-i"])
         .arg(ts_path)
         .args(["-c", "copy", "-movflags", "+faststart"])
@@ -407,6 +422,7 @@ async fn run_ffmpeg_command_in_dir(
     current_dir: Option<&Path>,
 ) -> Result<(), AppError> {
     let mut command = tokio::process::Command::new(ffmpeg_path);
+    configure_background_command(&mut command);
     command
         .args(args)
         .stdout(std::process::Stdio::null())
@@ -465,7 +481,9 @@ async fn run_ffprobe_dimensions(
     ffprobe_command: &OsStr,
     video_playlist: &Path,
 ) -> Option<(u32, u32)> {
-    let output = tokio::process::Command::new(ffprobe_command)
+    let mut command = tokio::process::Command::new(ffprobe_command);
+    configure_background_command(&mut command);
+    let output = command
         .args([
             "-v",
             "error",
