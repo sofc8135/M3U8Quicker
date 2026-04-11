@@ -140,6 +140,7 @@ pub fn run() {
             commands::open_firefox_addons_page,
             commands::merge_ts_files,
             commands::convert_ts_to_mp4_file,
+            commands::convert_multi_track_hls_to_mp4_dir,
             commands::get_ffmpeg_status,
             commands::download_ffmpeg,
             commands::set_ffmpeg_path,

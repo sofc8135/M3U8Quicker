@@ -1,17 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button, Form, Input, Modal, Space, Typography, message } from "antd";
 import {
+  BranchesOutlined,
   FileOutlined,
   FolderOpenOutlined,
   MergeCellsOutlined,
   SwapOutlined,
 } from "@ant-design/icons";
 import { open as pickDialogPath, save } from "@tauri-apps/plugin-dialog";
-import { convertTsToMp4File, mergeTsFiles } from "../services/api";
+import {
+  convertMultiTrackHlsToMp4Dir,
+  convertTsToMp4File,
+  mergeTsFiles,
+} from "../services/api";
 
 export type ToolAction =
   | "merge-ts"
   | "ts-to-mp4"
+  | "multi-track-hls-to-mp4"
   | "install-chrome-extension"
   | "install-edge-extension"
   | "install-firefox-extension";
@@ -45,6 +51,15 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
       );
     }
 
+    if (tool === "multi-track-hls-to-mp4") {
+      return (
+        <Space size={8}>
+          <BranchesOutlined />
+          <span>多轨 HLS 转 mp4</span>
+        </Space>
+      );
+    }
+
     return "工具";
   }, [tool]);
 
@@ -54,7 +69,7 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
   }, [form, open, tool]);
 
   const handlePickInput = async () => {
-    if (tool === "merge-ts") {
+    if (tool === "merge-ts" || tool === "multi-track-hls-to-mp4") {
       const selected = await pickDialogPath({
         multiple: false,
         directory: true,
@@ -64,7 +79,12 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
       const inputDir = selected as string;
       form.setFieldValue("input_path", inputDir);
       if (!form.getFieldValue("output_path")) {
-        form.setFieldValue("output_path", buildMergedOutputPath(inputDir));
+        form.setFieldValue(
+          "output_path",
+          tool === "merge-ts"
+            ? buildMergedOutputPath(inputDir)
+            : buildMultiTrackMp4OutputPath(inputDir)
+        );
       }
       return;
     }
@@ -115,19 +135,29 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
             ? "ts 已合并完成"
             : `ts 已合并完成，已另存为 ${getPathName(savedPath)}`
         );
-      } else {
+      } else if (tool === "ts-to-mp4") {
         const savedPath = await convertTsToMp4File(values.input_path.trim(), requestedOutput);
         message.success(
           savedPath === requestedOutput
             ? "mp4 已生成，原 ts 文件已保留"
             : `mp4 已生成，原 ts 文件已保留，已另存为 ${getPathName(savedPath)}`
         );
+      } else {
+        const savedPath = await convertMultiTrackHlsToMp4Dir(
+          values.input_path.trim(),
+          requestedOutput
+        );
+        message.success(
+          savedPath === requestedOutput
+            ? "多轨 HLS 已转为 mp4，原目录已保留"
+            : `多轨 HLS 已转为 mp4，原目录已保留，已另存为 ${getPathName(savedPath)}`
+        );
       }
 
       onClose();
     } catch (error: unknown) {
       if (error && typeof error === "object" && "errorFields" in error) return;
-      message.error(`执行工具失败: ${error}`);
+      message.error(`执行工具失败: ${formatToolError(error)}`);
     } finally {
       setSubmitting(false);
     }
@@ -147,7 +177,13 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
     >
       <Form form={form} layout="vertical">
         <Form.Item
-          label={tool === "merge-ts" ? "TS 目录" : "TS 文件"}
+          label={
+            tool === "merge-ts"
+              ? "TS 目录"
+              : tool === "ts-to-mp4"
+                ? "TS 文件"
+                : "多轨 HLS 目录"
+          }
           required
         >
           <Space.Compact style={{ width: "100%" }}>
@@ -157,19 +193,30 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
               rules={[
                 {
                   required: true,
-                  message: tool === "merge-ts" ? "请选择 TS 目录" : "请选择 TS 文件",
+                  message:
+                    tool === "merge-ts"
+                      ? "请选择 TS 目录"
+                      : tool === "ts-to-mp4"
+                        ? "请选择 TS 文件"
+                        : "请选择多轨 HLS 目录",
                 },
               ]}
             >
               <Input
                 readOnly
                 placeholder={
-                  tool === "merge-ts" ? "请选择包含 ts 切片的目录" : "请选择待转换的 ts 文件"
+                  tool === "merge-ts"
+                    ? "请选择包含 ts 切片的目录"
+                    : tool === "ts-to-mp4"
+                      ? "请选择待转换的 ts 文件"
+                      : "请选择本应用生成的多轨 HLS 目录"
                 }
               />
             </Form.Item>
             <Button
-              icon={tool === "merge-ts" ? <FolderOpenOutlined /> : <FileOutlined />}
+              icon={
+                tool === "ts-to-mp4" ? <FileOutlined /> : <FolderOpenOutlined />
+              }
               onClick={() => void handlePickInput()}
             >
               选择
@@ -195,6 +242,11 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
         {tool === "ts-to-mp4" && (
           <Typography.Text type="secondary">
             该工具会保留原 ts 文件，只额外生成一个 mp4 文件。
+          </Typography.Text>
+        )}
+        {tool === "multi-track-hls-to-mp4" && (
+          <Typography.Text type="secondary">
+            仅支持本应用生成的多轨 HLS 目录，会按设置中的 FFmpeg 路径处理并保留原目录。
           </Typography.Text>
         )}
       </Form>
@@ -234,4 +286,24 @@ function buildMp4OutputPath(inputPath: string) {
     ? `${name.slice(0, -3)}.mp4`
     : `${name}.mp4`;
   return joinPath(dir, nextName);
+}
+
+function buildMultiTrackMp4OutputPath(inputDir: string) {
+  const { dir, name } = splitPath(inputDir);
+  const sanitizedName = (name || "bundle").replace(/^\.+/, "").trim();
+  const strippedName = sanitizedName.replace(/_tracks$/i, "").trim();
+  const outputName = strippedName || sanitizedName || "bundle";
+  return joinPath(dir, `${outputName}.mp4`);
+}
+
+function formatToolError(error: unknown) {
+  const text = String(error ?? "").trim();
+  if (!text) {
+    return "未知错误";
+  }
+
+  return text.replace(
+    /^(Invalid input|M3U8 parse error|Network error|IO error|URL parse error|Decryption error|Conversion error):\s*/i,
+    ""
+  );
 }

@@ -1,6 +1,7 @@
 import { Button, Dropdown, Space, Typography, theme } from "antd";
 import {
   ChromeOutlined,
+  DeploymentUnitOutlined,
   GlobalOutlined,
   MergeCellsOutlined,
   DownOutlined,
@@ -37,6 +38,18 @@ export function Toolbar({
       key: "ts-to-mp4",
       label: "ts 转 mp4",
       icon: <SwapOutlined />,
+    },
+    {
+      key: "ffmpeg-tools",
+      label: "FFmpeg",
+      icon: <DeploymentUnitOutlined />,
+      children: [
+        {
+          key: "multi-track-hls-to-mp4",
+          label: "多轨 HLS 转 mp4",
+          icon: <SwapOutlined />,
+        },
+      ],
     },
     {
       key: "install-browser-extension",

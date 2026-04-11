@@ -1314,6 +1314,52 @@ pub async fn convert_ts_to_mp4_file(
 }
 
 #[tauri::command]
+pub async fn convert_multi_track_hls_to_mp4_dir(
+    app_handle: AppHandle,
+    input_dir: String,
+    output_path: String,
+) -> Result<String, AppError> {
+    let input_dir = PathBuf::from(input_dir.trim());
+    let output_path = PathBuf::from(output_path.trim());
+
+    if input_dir.as_os_str().is_empty() || !input_dir.is_dir() {
+        return Err(AppError::InvalidInput(
+            "请选择有效的多轨 HLS 目录".to_string(),
+        ));
+    }
+    if output_path.as_os_str().is_empty() {
+        return Err(AppError::InvalidInput("输出文件不能为空".to_string()));
+    }
+
+    let bundle = resolve_local_hls_bundle_paths(&input_dir)?;
+    let ffmpeg_path = crate::ffmpeg::resolve_ffmpeg_path(&app_handle)
+        .await
+        .ok_or_else(|| {
+            AppError::InvalidInput(
+                "未检测到可用的 FFmpeg，请先在设置 -> FFmpeg 中配置或下载 FFmpeg".to_string(),
+            )
+        })?;
+
+    if let Some(parent) = output_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
+    let resolved_output_path = downloader::resolve_available_file_path(&output_path);
+    crate::ffmpeg::convert_multi_track_hls_to_mp4(
+        &ffmpeg_path,
+        &bundle.video_playlist,
+        bundle.audio_playlist.as_deref(),
+        bundle.subtitle_playlist.as_deref(),
+        &resolved_output_path,
+    )
+    .await?;
+    Ok(resolved_output_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub async fn get_ffmpeg_status(
     app_handle: AppHandle,
 ) -> Result<crate::ffmpeg::FfmpegStatus, AppError> {
@@ -1531,6 +1577,70 @@ fn validate_uri_layout(task: &DownloadTask, current_uris: &[String]) -> Result<(
 fn resolve_bundle_output_dir(output_dir: &Path, filename: &str) -> PathBuf {
     let candidate = output_dir.join(format!("{}_tracks", filename));
     downloader::resolve_available_file_path(&candidate)
+}
+
+#[derive(Debug)]
+struct LocalHlsBundlePaths {
+    video_playlist: PathBuf,
+    audio_playlist: Option<PathBuf>,
+    subtitle_playlist: Option<PathBuf>,
+}
+
+fn resolve_local_hls_bundle_paths(input_dir: &Path) -> Result<LocalHlsBundlePaths, AppError> {
+    let video_playlist = required_track_playlist_path(input_dir, "video", "视频")?;
+    let audio_playlist = optional_track_playlist_path(input_dir, "audio", "音频")?;
+    let subtitle_playlist = optional_track_playlist_path(input_dir, "subtitle", "字幕")?;
+
+    if audio_playlist.is_none() && subtitle_playlist.is_none() {
+        return Err(AppError::InvalidInput(
+            "所选目录不是有效的多轨 HLS 目录，至少需要音频或字幕轨道".to_string(),
+        ));
+    }
+
+    Ok(LocalHlsBundlePaths {
+        video_playlist,
+        audio_playlist,
+        subtitle_playlist,
+    })
+}
+
+fn required_track_playlist_path(
+    input_dir: &Path,
+    track_dir_name: &str,
+    track_label: &str,
+) -> Result<PathBuf, AppError> {
+    let track_dir = input_dir.join(track_dir_name);
+    let playlist_path = track_dir.join("index.m3u8");
+
+    if !track_dir.is_dir() || !playlist_path.is_file() {
+        return Err(AppError::InvalidInput(format!(
+            "所选目录缺少 {} 轨道的 index.m3u8",
+            track_label
+        )));
+    }
+
+    Ok(playlist_path)
+}
+
+fn optional_track_playlist_path(
+    input_dir: &Path,
+    track_dir_name: &str,
+    track_label: &str,
+) -> Result<Option<PathBuf>, AppError> {
+    let track_dir = input_dir.join(track_dir_name);
+    let playlist_path = track_dir.join("index.m3u8");
+
+    if !track_dir.exists() {
+        return Ok(None);
+    }
+    if !track_dir.is_dir() || !playlist_path.is_file() {
+        return Err(AppError::InvalidInput(format!(
+            "所选目录中的 {} 轨道缺少 index.m3u8",
+            track_label
+        )));
+    }
+
+    Ok(Some(playlist_path))
 }
 
 fn task_to_progress(task: &DownloadTask) -> DownloadProgressEvent {
@@ -2980,7 +3090,52 @@ mod tests {
         fs::write(dir.join("manifest.json"), "{}").expect("write manifest");
     }
 
+    fn create_bundle_playlist(dir: &Path, track_dir_name: &str) {
+        let track_dir = dir.join(track_dir_name);
+        fs::create_dir_all(&track_dir).expect("create track dir");
+        fs::write(track_dir.join("index.m3u8"), "#EXTM3U\n").expect("write playlist");
+    }
+
     fn remove_temp_dir(dir: &Path) {
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn resolve_local_hls_bundle_paths_accepts_video_audio_subtitle_bundle() {
+        let temp_root = unique_temp_path("multi-track-bundle-valid");
+        create_bundle_playlist(&temp_root, "video");
+        create_bundle_playlist(&temp_root, "audio");
+        create_bundle_playlist(&temp_root, "subtitle");
+
+        let bundle = resolve_local_hls_bundle_paths(&temp_root).expect("valid bundle");
+
+        assert!(bundle.video_playlist.ends_with(Path::new("video").join("index.m3u8")));
+        assert!(bundle.audio_playlist.is_some());
+        assert!(bundle.subtitle_playlist.is_some());
+        remove_temp_dir(&temp_root);
+    }
+
+    #[test]
+    fn resolve_local_hls_bundle_paths_rejects_missing_video_playlist() {
+        let temp_root = unique_temp_path("multi-track-bundle-missing-video");
+        create_bundle_playlist(&temp_root, "audio");
+
+        let error =
+            resolve_local_hls_bundle_paths(&temp_root).expect_err("bundle without video must fail");
+
+        assert!(error.to_string().contains("视频"));
+        remove_temp_dir(&temp_root);
+    }
+
+    #[test]
+    fn resolve_local_hls_bundle_paths_rejects_single_video_only_bundle() {
+        let temp_root = unique_temp_path("multi-track-bundle-video-only");
+        create_bundle_playlist(&temp_root, "video");
+
+        let error =
+            resolve_local_hls_bundle_paths(&temp_root).expect_err("video-only bundle must fail");
+
+        assert!(error.to_string().contains("至少需要音频或字幕轨道"));
+        remove_temp_dir(&temp_root);
     }
 }

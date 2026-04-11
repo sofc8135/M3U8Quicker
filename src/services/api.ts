@@ -199,6 +199,16 @@ export async function convertTsToMp4File(
   return invoke<string>("convert_ts_to_mp4_file", { inputPath, outputPath });
 }
 
+export async function convertMultiTrackHlsToMp4Dir(
+  inputDir: string,
+  outputPath: string
+): Promise<string> {
+  return invoke<string>("convert_multi_track_hls_to_mp4_dir", {
+    inputDir,
+    outputPath,
+  });
+}
+
 export async function getFfmpegStatus(): Promise<FfmpegStatus> {
   return invoke<FfmpegStatus>("get_ffmpeg_status");
 }
