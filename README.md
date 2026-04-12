@@ -98,6 +98,13 @@ origin:https://example.com
 - 下载完成后是否删除临时 ts 目录、自动转换为 mp4
 - FFmpeg下载和管理
 
+### FFmpeg 与第三方许可
+
+- 应用的部分转码、分析和多轨合成功能依赖 `FFmpeg`
+- 应用会优先使用用户手动指定的 `FFmpeg`、系统 `PATH` 中的 `FFmpeg`，或在用户主动操作后下载第三方 `FFmpeg` 二进制到应用数据目录
+- `FFmpeg` 及其相关二进制不属于本仓库源码的一部分，也不受本仓库 `Apache-2.0` 许可证覆盖
+- 关于 `FFmpeg` 下载来源、许可证和第三方说明，请参见仓库根目录下的 `THIRD_PARTY_NOTICES.md`
+
 ## 浏览器扩展（可选）
 
 安装浏览器扩展后，网页中会自动扫描出`m3u8`链接和视频地址，右上角会出现一个按钮`M3U8 Quicker`，点击后唤起桌面应用新建下载任务，并自动带入 `url`、`referer`、`origin`、`user-agent`。
@@ -170,6 +177,10 @@ npm run tauri dev
 
 > 桌面应用打包时会把仓库根目录下的 `browser-extension/` 一并作为资源打入安装包，因此安装后的应用仍然可以为扩展安装引导提供目标目录。
 
+> 当前仓库和默认打包配置不会直接把 `FFmpeg` 二进制预置进安装包；如用户在应用内下载或自行配置 `FFmpeg`，该部分组件适用其各自的上游许可证与分发条件。
+
 ## License
 
-本项目基于 Apache License 2.0 开源，详见仓库根目录下的 `LICENSE` 文件。
+- 本仓库源码基于 Apache License 2.0 开源，详见仓库根目录下的 `LICENSE` 文件。
+- 本项目运行时可使用的 `FFmpeg`、系统已安装的 `FFmpeg` 以及应用内下载的第三方 `FFmpeg` 二进制，均适用其各自许可证，不因本仓库采用 `Apache-2.0` 而改变。
+- 第三方许可与说明请参见仓库根目录下的 `THIRD_PARTY_NOTICES.md`。
