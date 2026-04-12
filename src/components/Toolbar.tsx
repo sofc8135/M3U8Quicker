@@ -4,6 +4,7 @@ import {
   ChromeOutlined,
   ControlOutlined,
   DeploymentUnitOutlined,
+  FileSyncOutlined,
   FileSearchOutlined,
   GlobalOutlined,
   MergeCellsOutlined,
@@ -41,6 +42,11 @@ export function Toolbar({
       key: "ts-to-mp4",
       label: "ts 转 mp4",
       icon: <SwapOutlined />,
+    },
+    {
+      key: "local-m3u8-to-mp4",
+      label: "本地 m3u8 转 mp4",
+      icon: <FileSyncOutlined />,
     },
     {
       key: "ffmpeg-tools",

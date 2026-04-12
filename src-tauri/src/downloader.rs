@@ -2869,6 +2869,192 @@ pub async fn merge_ts_files_in_dir(input_dir: &Path, output_path: &Path) -> Resu
     merge_files(&files, output_path).await
 }
 
+// --- Local M3U8 to MP4 ---
+
+fn resolve_local_m3u8_uri(base_dir: &Path, uri: &str) -> Result<PathBuf, AppError> {
+    let trimmed = uri.trim();
+    if trimmed.is_empty() {
+        return Err(AppError::M3u8Parse("m3u8 中存在空 URI".to_string()));
+    }
+
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return Err(AppError::InvalidInput(
+            "本地转换不支持网络 URI".to_string(),
+        ));
+    }
+
+    let cleaned: &str = trimmed
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(trimmed);
+
+    let candidate = if let Some(rest) = cleaned
+        .strip_prefix("file://")
+        .or_else(|| cleaned.strip_prefix("FILE://"))
+    {
+        // Strip optional leading slash on Windows-style file:///C:/... URIs.
+        let rest = if cfg!(windows) {
+            rest.strip_prefix('/').unwrap_or(rest)
+        } else {
+            rest
+        };
+        PathBuf::from(rest)
+    } else {
+        let path = Path::new(cleaned);
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            base_dir.join(path)
+        }
+    };
+
+    let resolved = std::fs::canonicalize(&candidate).unwrap_or(candidate);
+    if !resolved.is_file() {
+        return Err(AppError::InvalidInput(format!(
+            "找不到本地文件：{}",
+            resolved.display()
+        )));
+    }
+
+    Ok(resolved)
+}
+
+pub async fn convert_local_m3u8_to_mp4_file(
+    m3u8_path: &Path,
+    mp4_path: &Path,
+    ffmpeg_enabled: bool,
+    ffmpeg_path: Option<&Path>,
+) -> Result<(), AppError> {
+    let bytes = tokio::fs::read(m3u8_path).await?;
+    let playlist = m3u8_rs::parse_playlist_res(&bytes).map_err(|_| {
+        AppError::InvalidInput("所选文件不是有效的 M3U8 播放列表".to_string())
+    })?;
+
+    let media = match playlist {
+        m3u8_rs::Playlist::MediaPlaylist(media) => media,
+        m3u8_rs::Playlist::MasterPlaylist(_) => {
+            return Err(AppError::InvalidInput(
+                "不支持主播放列表，请指向包含分片的 m3u8 文件".to_string(),
+            ));
+        }
+    };
+
+    let base_dir = m3u8_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let media_sequence = media.media_sequence;
+    let mut current_enc: Option<EncryptionInfo> = None;
+    let mut key_cache: HashMap<PathBuf, Vec<u8>> = HashMap::new();
+
+    let tmp_ts_path = {
+        let stem = mp4_path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("output");
+        let parent = mp4_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        parent.join(format!("{}.m3u8quicker.ts", stem))
+    };
+
+    let result = async {
+        let mut tmp_file = tokio::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&tmp_ts_path)
+            .await?;
+
+        for (index, segment) in media.segments.iter().enumerate() {
+            if segment.map.is_some() {
+                return Err(AppError::InvalidInput(
+                    "暂不支持包含 EXT-X-MAP 的播放列表".to_string(),
+                ));
+            }
+            if segment.byte_range.is_some() {
+                return Err(AppError::InvalidInput(
+                    "暂不支持包含 EXT-X-BYTERANGE 的播放列表".to_string(),
+                ));
+            }
+
+            if let Some(key) = segment.key.as_ref() {
+                match key.method {
+                    m3u8_rs::KeyMethod::None => {
+                        current_enc = None;
+                    }
+                    m3u8_rs::KeyMethod::AES128 => {
+                        let key_uri = key.uri.as_ref().ok_or_else(|| {
+                            AppError::M3u8Parse("AES-128 key 缺少 URI".to_string())
+                        })?;
+                        let key_path = resolve_local_m3u8_uri(&base_dir, key_uri)?;
+                        let key_bytes = if let Some(cached) = key_cache.get(&key_path) {
+                            cached.clone()
+                        } else {
+                            let bytes = tokio::fs::read(&key_path).await?;
+                            if !matches!(bytes.len(), 16 | 24 | 32) {
+                                return Err(AppError::Decryption(format!(
+                                    "AES key 长度非法：{} 字节",
+                                    bytes.len()
+                                )));
+                            }
+                            key_cache.insert(key_path.clone(), bytes.clone());
+                            bytes
+                        };
+                        let method = match key_bytes.len() {
+                            16 => "AES-128",
+                            24 => "AES-192",
+                            32 => "AES-256",
+                            _ => "AES-128",
+                        }
+                        .to_string();
+                        current_enc = Some(EncryptionInfo {
+                            method,
+                            key_uri: key_uri.clone(),
+                            iv: key.iv.clone(),
+                            key_bytes,
+                        });
+                    }
+                    _ => {
+                        return Err(AppError::M3u8Parse(format!(
+                            "不支持的加密方式：{:?}",
+                            key.method
+                        )));
+                    }
+                }
+            }
+
+            let segment_path = resolve_local_m3u8_uri(&base_dir, &segment.uri)?;
+            let raw = tokio::fs::read(&segment_path).await?;
+            let sequence_number = media_sequence + index as u64;
+
+            let plain = if let Some(ref enc) = current_enc {
+                let iv = compute_iv(enc, sequence_number);
+                decrypt_aes_cbc(&raw, &enc.key_bytes, &iv)?
+            } else {
+                raw
+            };
+
+            tmp_file.write_all(&plain).await?;
+        }
+
+        tmp_file.flush().await?;
+        drop(tmp_file);
+
+        convert_ts_to_mp4_file(&tmp_ts_path, mp4_path, true, ffmpeg_enabled, ffmpeg_path).await
+    }
+    .await;
+
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&tmp_ts_path).await;
+    }
+
+    result
+}
+
 fn mp4_resume_response_mode(status: StatusCode) -> Mp4ResumeResponseMode {
     match status {
         StatusCode::PARTIAL_CONTENT => Mp4ResumeResponseMode::Append,

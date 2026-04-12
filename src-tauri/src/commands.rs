@@ -1320,6 +1320,42 @@ pub async fn convert_ts_to_mp4_file(
 }
 
 #[tauri::command]
+pub async fn convert_local_m3u8_to_mp4_file(
+    app_handle: AppHandle,
+    input_path: String,
+    output_path: String,
+) -> Result<String, AppError> {
+    let input_path = PathBuf::from(input_path.trim());
+    let output_path = PathBuf::from(output_path.trim());
+
+    if input_path.as_os_str().is_empty() || !input_path.is_file() {
+        return Err(AppError::InvalidInput("请选择有效的 m3u8 文件".to_string()));
+    }
+    if output_path.as_os_str().is_empty() {
+        return Err(AppError::InvalidInput("输出文件不能为空".to_string()));
+    }
+
+    if let Some(parent) = output_path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
+    let ffmpeg_path = crate::ffmpeg::resolve_ffmpeg_path(&app_handle).await;
+    let ffmpeg_enabled = *app_handle.state::<AppState>().ffmpeg_enabled.lock().await;
+    let resolved_output_path = downloader::resolve_available_file_path(&output_path);
+    downloader::convert_local_m3u8_to_mp4_file(
+        &input_path,
+        &resolved_output_path,
+        ffmpeg_enabled,
+        ffmpeg_path.as_deref(),
+    )
+    .await?;
+    Ok(resolved_output_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 pub async fn convert_media_file(
     app_handle: AppHandle,
     input_path: String,

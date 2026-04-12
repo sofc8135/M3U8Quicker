@@ -144,6 +144,7 @@ pub fn run() {
             commands::open_firefox_addons_page,
             commands::merge_ts_files,
             commands::convert_ts_to_mp4_file,
+            commands::convert_local_m3u8_to_mp4_file,
             commands::convert_media_file,
             commands::transcode_media_file,
             commands::analyze_media_file,

@@ -18,6 +18,7 @@ import {
   ApartmentOutlined,
   DeleteOutlined,
   FileOutlined,
+  FileSyncOutlined,
   FileSearchOutlined,
   FolderOpenOutlined,
   MergeCellsOutlined,
@@ -26,6 +27,7 @@ import {
 import { open as pickDialogPath, save } from "@tauri-apps/plugin-dialog";
 import {
   analyzeMediaFile,
+  convertLocalM3u8ToMp4File,
   convertMultiTrackHlsToMp4Dir,
   convertMediaFile,
   convertTsToMp4File,
@@ -38,6 +40,7 @@ import type { MediaAnalysisResult } from "../types";
 export type ToolAction =
   | "merge-ts"
   | "ts-to-mp4"
+  | "local-m3u8-to-mp4"
   | "merge-video"
   | "format-convert"
   | "codec-convert"
@@ -156,6 +159,15 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
       );
     }
 
+    if (tool === "local-m3u8-to-mp4") {
+      return (
+        <Space size={8}>
+          <FileSyncOutlined />
+          <span>本地 m3u8 转 mp4</span>
+        </Space>
+      );
+    }
+
     if (tool === "merge-video") {
       return (
         <Space size={8}>
@@ -264,14 +276,21 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
       return;
     }
 
-    if (tool === "ts-to-mp4" || tool === "analyze-media" || tool === "codec-convert") {
+    if (
+      tool === "ts-to-mp4" ||
+      tool === "local-m3u8-to-mp4" ||
+      tool === "analyze-media" ||
+      tool === "codec-convert"
+    ) {
       const selected = await pickDialogPath({
         multiple: false,
         directory: false,
         filters:
           tool === "ts-to-mp4"
             ? [{ name: "TS 文件", extensions: ["ts"] }]
-            : undefined,
+            : tool === "local-m3u8-to-mp4"
+              ? [{ name: "M3U8 文件", extensions: ["m3u8"] }]
+              : undefined,
       });
 
       if (!selected) return;
@@ -285,6 +304,12 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
         const outputFormat =
           (form.getFieldValue("output_format") as CodecOutputFormat | undefined) ?? "mp4";
         form.setFieldValue("output_path", buildConvertedOutputPath(inputPath, outputFormat));
+        return;
+      }
+      if (tool === "local-m3u8-to-mp4") {
+        if (!form.getFieldValue("output_path")) {
+          form.setFieldValue("output_path", buildLocalM3u8Mp4OutputPath(inputPath));
+        }
         return;
       }
       if (!form.getFieldValue("output_path")) {
@@ -353,6 +378,17 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
           savedPath === requestedOutput
             ? "mp4 已生成，原 ts 文件已保留"
             : `mp4 已生成，原 ts 文件已保留，已另存为 ${getPathName(savedPath)}`
+        );
+      } else if (tool === "local-m3u8-to-mp4") {
+        const requestedOutput = values.output_path.trim();
+        const savedPath = await convertLocalM3u8ToMp4File(
+          values.input_path.trim(),
+          requestedOutput
+        );
+        message.success(
+          savedPath === requestedOutput
+            ? "m3u8 已转换为 mp4，原文件已保留"
+            : `m3u8 已转换为 mp4，原文件已保留，已另存为 ${getPathName(savedPath)}`
         );
       } else if (tool === "merge-video") {
         const inputPaths =
@@ -496,6 +532,8 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
                 ? "TS 目录"
                 : tool === "ts-to-mp4"
                   ? "TS 文件"
+                  : tool === "local-m3u8-to-mp4"
+                    ? "M3U8 文件"
                   : tool === "format-convert"
                     ? "媒体文件"
                     : tool === "codec-convert"
@@ -518,6 +556,8 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
                         ? "请选择 TS 目录"
                         : tool === "ts-to-mp4"
                           ? "请选择 TS 文件"
+                          : tool === "local-m3u8-to-mp4"
+                            ? "请选择 m3u8 文件"
                           : tool === "format-convert"
                             ? "请选择媒体文件"
                             : tool === "codec-convert"
@@ -535,6 +575,8 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
                       ? "请选择包含 ts 切片的目录"
                       : tool === "ts-to-mp4"
                         ? "请选择待转换的 ts 文件"
+                        : tool === "local-m3u8-to-mp4"
+                          ? "请选择待转换的 m3u8 文件"
                         : tool === "format-convert"
                           ? "请选择待转换的媒体文件"
                           : tool === "codec-convert"
@@ -548,6 +590,7 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
               <Button
                 icon={
                   tool === "ts-to-mp4" ||
+                  tool === "local-m3u8-to-mp4" ||
                   tool === "format-convert" ||
                   tool === "codec-convert" ||
                   tool === "analyze-media" ? (
@@ -695,6 +738,11 @@ export function ToolsModal({ open, tool, onClose }: ToolsModalProps) {
         {tool === "ts-to-mp4" && (
           <Typography.Text type="secondary">
             该工具会保留原 ts 文件，只额外生成一个 mp4 文件。
+          </Typography.Text>
+        )}
+        {tool === "local-m3u8-to-mp4" && (
+          <Typography.Text type="secondary">
+            该工具完全在本地处理：解析所选 m3u8、读取同目录下的分片与密钥文件，自动解密 AES-128 后生成 mp4，全程不会发起任何网络请求。
           </Typography.Text>
         )}
         {tool === "merge-video" && (
@@ -904,6 +952,14 @@ function buildMp4OutputPath(inputPath: string) {
   const { dir, name } = splitPath(inputPath);
   const nextName = name.toLowerCase().endsWith(".ts")
     ? `${name.slice(0, -3)}.mp4`
+    : `${name}.mp4`;
+  return joinPath(dir, nextName);
+}
+
+function buildLocalM3u8Mp4OutputPath(inputPath: string) {
+  const { dir, name } = splitPath(inputPath);
+  const nextName = name.toLowerCase().endsWith(".m3u8")
+    ? `${name.slice(0, -5)}.mp4`
     : `${name}.mp4`;
   return joinPath(dir, nextName);
 }

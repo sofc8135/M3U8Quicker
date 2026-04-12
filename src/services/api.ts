@@ -200,6 +200,13 @@ export async function convertTsToMp4File(
   return invoke<string>("convert_ts_to_mp4_file", { inputPath, outputPath });
 }
 
+export async function convertLocalM3u8ToMp4File(
+  inputPath: string,
+  outputPath: string
+): Promise<string> {
+  return invoke<string>("convert_local_m3u8_to_mp4_file", { inputPath, outputPath });
+}
+
 export async function convertMediaFile(
   inputPath: string,
   outputPath: string,
