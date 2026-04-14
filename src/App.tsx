@@ -1,12 +1,27 @@
 import { useEffect, useState } from "react";
-import { Button, Layout, Modal, Popconfirm, Space, Tabs, Typography, message, theme } from "antd";
-import { ChromeOutlined, ClearOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import {
+  Button,
+  Layout,
+  Modal,
+  Popconfirm,
+  Space,
+  Tabs,
+  Typography,
+  message,
+  theme,
+} from "antd";
+import {
+  ChromeOutlined,
+  ClearOutlined,
+  FolderOpenOutlined,
+} from "@ant-design/icons";
 import { EdgeIcon } from "./components/EdgeIcon";
 import { FirefoxIcon } from "./components/FirefoxIcon";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Toolbar } from "./components/Toolbar";
 import { DownloadList } from "./components/DownloadList";
 import { NewDownloadModal } from "./components/NewDownloadModal";
+import { BatchDownloadModal } from "./components/BatchDownloadModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { ToolsModal, type ToolAction } from "./components/ToolsModal";
 import { useDownloads } from "./hooks/useDownloads";
@@ -81,6 +96,7 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
   const [toolModalOpen, setToolModalOpen] = useState(false);
   const [activeTool, setActiveTool] = useState<ToolAction | null>(null);
   const [downloadDraft, setDownloadDraft] = useState<DownloadDraft | null>(null);
+  const [batchDownloadModalOpen, setBatchDownloadModalOpen] = useState(false);
   const [chromiumInstallGuide, setChromiumInstallGuide] =
     useState<ChromiumInstallGuideState | null>(null);
   const [firefoxInstallGuide, setFirefoxInstallGuide] =
@@ -370,6 +386,9 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
             setDownloadDraft(null);
             setModalOpen(true);
           }}
+          onOpenBatchDownload={() => {
+            setBatchDownloadModalOpen(true);
+          }}
           onOpenTool={(tool) => {
             if (tool === "install-chrome-extension") {
               void handleInstallChromiumExtension("chrome");
@@ -432,6 +451,13 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
         onClose={() => {
           setToolModalOpen(false);
           setActiveTool(null);
+        }}
+      />
+      <BatchDownloadModal
+        open={batchDownloadModalOpen}
+        onClose={() => setBatchDownloadModalOpen(false)}
+        onSubmit={async (params) => {
+          await addDownload(params);
         }}
       />
       <Modal

@@ -4,6 +4,7 @@ import {
   ChromeOutlined,
   ControlOutlined,
   DeploymentUnitOutlined,
+  DownloadOutlined,
   FileSyncOutlined,
   FileSearchOutlined,
   GlobalOutlined,
@@ -22,16 +23,25 @@ import { FirefoxIcon } from "./FirefoxIcon";
 
 interface ToolbarProps {
   onNewDownload: () => void;
+  onOpenBatchDownload: () => void;
   onOpenTool: (tool: ToolAction) => void;
   onOpenSettings: () => void;
 }
 
 export function Toolbar({
   onNewDownload,
+  onOpenBatchDownload,
   onOpenTool,
   onOpenSettings,
 }: ToolbarProps) {
   const { token } = theme.useToken();
+  const newDownloadItems: MenuProps["items"] = [
+    {
+      key: "batch-download",
+      label: "批量下载",
+      icon: <DownloadOutlined />,
+    },
+  ];
   const toolItems: MenuProps["items"] = [
     {
       key: "merge-ts",
@@ -120,9 +130,35 @@ export function Toolbar({
         </Typography.Title>
       </Space>
       <Space>
-        <Button type="primary" icon={<PlusOutlined />} onClick={onNewDownload}>
-          新建下载
-        </Button>
+        <Space.Compact className="toolbar-download-actions">
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={onNewDownload}
+            className="toolbar-download-main-btn"
+          >
+            新建下载
+          </Button>
+          <Dropdown
+            menu={{
+              items: newDownloadItems,
+              onClick: ({ key }) => {
+                if (key === "batch-download") {
+                  onOpenBatchDownload();
+                }
+              },
+            }}
+            trigger={["click"]}
+          >
+            <Button
+              type="primary"
+              aria-label="更多下载方式"
+              className="toolbar-download-caret-btn"
+            >
+              <DownOutlined style={{ fontSize: 12 }} />
+            </Button>
+          </Dropdown>
+        </Space.Compact>
         <Dropdown
           menu={{
             items: toolItems,

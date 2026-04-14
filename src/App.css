@@ -74,3 +74,21 @@ body,
 .settings-modal-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
   font-weight: 600;
 }
+
+.toolbar-download-actions .ant-btn {
+  padding-inline: 10px;
+}
+
+.toolbar-download-main-btn.ant-btn {
+  position: relative;
+}
+
+.toolbar-download-actions .ant-btn-icon-only {
+  width: 28px;
+  min-width: 28px;
+  padding-inline: 0;
+}
+
+.toolbar-download-caret-btn.ant-btn {
+  border-left-color: transparent !important;
+}

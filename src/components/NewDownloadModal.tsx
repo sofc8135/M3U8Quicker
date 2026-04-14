@@ -314,7 +314,7 @@ export function NewDownloadModal({
         >
           <Input.TextArea
             placeholder={
-              "按行输入，每行一个 header\nreferer:https://www.xx.com\norigin:https://www.xx.com"
+              "按行输入，每行一个 header\nreferer:https://example.com\norigin:https://example.com"
             }
             rows={3}
           />
