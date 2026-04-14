@@ -31,7 +31,7 @@
 
 ### 安装
 
-可在 GitHub Releases 页面下载对应的桌面安装包或发行文件，常见安装文件与平台对应关系如下：
+可在 [GitHub Releases](https://github.com/Liubsyy/M3U8Quicker/releases) 页面下载对应的桌面安装包或发行文件，常见安装文件与平台对应关系如下：
 
 | 文件类型 | 文件名示例 | 适用平台 | 说明 |
 | --- | --- | --- | --- |
