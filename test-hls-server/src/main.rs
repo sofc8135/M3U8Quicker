@@ -618,7 +618,8 @@ fn build_encrypted_playlist(
     encryption: &EncryptionArtifacts,
 ) -> String {
     let key_line = format!(
-        "#EXT-X-KEY:METHOD=AES-128,URI=\"{}\",IV=0x{}",
+        "#EXT-X-KEY:METHOD={},URI=\"{}\",IV=0x{}",
+        mode.display_name(),
         encryption.key_uri,
         bytes_to_hex(&encryption.iv)
     );
