@@ -14,7 +14,7 @@
   const isTopLevelContext = checkIsTopLevelContext();
   const detectedTargets = [];
   const checkedTargets = new Set();
-  let latestTarget = "";
+  const videoThumbnailMap = new Map();
   let buttonPosition = { top: 20, right: 20 };
   let uiRoot = null;
 
@@ -68,11 +68,130 @@
   function scanVideos() {
     const videos = document.getElementsByTagName("video");
     for (let i = 0; i < videos.length; i += 1) {
-      const currentSrc = videos[i].currentSrc || videos[i].src || "";
+      const video = videos[i];
+      const currentSrc = video.currentSrc || video.src || "";
       const DIRECT_EXTS = [".mp4", ".mkv", ".avi", ".wmv", ".flv", ".webm", ".mov", ".rmvb"];
       if (currentSrc.indexOf(".m3u8") > -1 || DIRECT_EXTS.some((ext) => currentSrc.toLowerCase().indexOf(ext) > -1)) {
+        const thumbnail = collectVideoThumbnail(video);
+        if (thumbnail) {
+          videoThumbnailMap.set(currentSrc, thumbnail);
+        }
         reportDetection(currentSrc);
       }
+    }
+    backfillThumbnails();
+  }
+
+  function collectVideoThumbnail(video) {
+    if (!video) {
+      return null;
+    }
+    if (video.poster) {
+      return video.poster;
+    }
+    const nearby = findNearbyCoverImage(video);
+    if (nearby) {
+      return nearby;
+    }
+    return captureVideoFrame(video);
+  }
+
+  function findNearbyCoverImage(video) {
+    const seen = new Set();
+    let node = video.parentElement;
+    for (let depth = 0; depth < 4 && node; depth += 1) {
+      const imgs = node.querySelectorAll ? node.querySelectorAll("img") : [];
+      let best = null;
+      let bestArea = 0;
+      for (let i = 0; i < imgs.length; i += 1) {
+        const img = imgs[i];
+        if (seen.has(img)) {
+          continue;
+        }
+        seen.add(img);
+        const src = img.currentSrc || img.src || "";
+        if (!src) {
+          continue;
+        }
+        const area = (img.naturalWidth || 0) * (img.naturalHeight || 0);
+        if (area < 64 * 36) {
+          continue;
+        }
+        if (area > bestArea) {
+          best = src;
+          bestArea = area;
+        }
+      }
+      if (best) {
+        return best;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function captureVideoFrame(video) {
+    if (!video || video.readyState < 2 || !video.videoWidth) {
+      return null;
+    }
+    try {
+      const maxWidth = 240;
+      const scale = Math.min(1, maxWidth / video.videoWidth);
+      const width = Math.max(1, Math.round(video.videoWidth * scale));
+      const height = Math.max(1, Math.round(video.videoHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      ctx.drawImage(video, 0, 0, width, height);
+      return canvas.toDataURL("image/jpeg", 0.7);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function resolveThumbnailFor(rawUrl) {
+    if (!rawUrl) {
+      return null;
+    }
+    if (videoThumbnailMap.has(rawUrl)) {
+      return videoThumbnailMap.get(rawUrl);
+    }
+    const stripped = rawUrl.split("?")[0];
+    if (stripped && videoThumbnailMap.has(stripped)) {
+      return videoThumbnailMap.get(stripped);
+    }
+    for (const [key, value] of videoThumbnailMap) {
+      if (key && key.split("?")[0] === stripped) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  function backfillThumbnails() {
+    for (let i = 0; i < detectedTargets.length; i += 1) {
+      const target = detectedTargets[i];
+      if (target.thumbnail) {
+        continue;
+      }
+      const resolved = resolveThumbnailFor(target.url) || resolveThumbnailFor(stripTitleParam(target.url));
+      if (resolved) {
+        target.thumbnail = resolved;
+      }
+    }
+  }
+
+  function stripTitleParam(url) {
+    try {
+      const urlObj = new URL(url, window.location.href);
+      urlObj.searchParams.delete("title");
+      return urlObj.href;
+    } catch (error) {
+      return url;
     }
   }
 
@@ -174,7 +293,6 @@
   }
 
   function registerTarget(rawUrl, normalizedUrl) {
-    latestTarget = normalizedUrl;
     if (!detectedTargets.find((item) => item.url === normalizedUrl)) {
       var type = detectFileType(rawUrl);
       var ext = detectFileExt(rawUrl);
@@ -184,8 +302,14 @@
       detectedTargets.push({
         url: normalizedUrl,
         fileName: getFileName(rawUrl, fallback),
-        fileType: type
+        fileType: type,
+        thumbnail: resolveThumbnailFor(rawUrl) || null
       });
+    } else {
+      const existing = detectedTargets.find((item) => item.url === normalizedUrl);
+      if (existing && !existing.thumbnail) {
+        existing.thumbnail = resolveThumbnailFor(rawUrl) || null;
+      }
     }
 
     appendButton();
@@ -278,9 +402,7 @@
   }
 
   function onButtonClick() {
-    if (detectedTargets.length <= 1) {
-      var target = detectedTargets[0];
-      openDownloader(latestTarget, target ? target.fileType : "hls");
+    if (detectedTargets.length === 0) {
       return;
     }
 
@@ -296,9 +418,9 @@
     panel.style.right = `${buttonPosition.right}px`;
     panel.style.top = `${buttonPosition.top + 52}px`;
     panel.style.zIndex = "2147483647";
-    panel.style.width = "320px";
-    panel.style.maxWidth = "min(420px, calc(100vw - 24px))";
-    panel.style.maxHeight = "50vh";
+    panel.style.width = "400px";
+    panel.style.maxWidth = "min(520px, calc(100vw - 24px))";
+    panel.style.maxHeight = "60vh";
     panel.style.overflowY = "auto";
     panel.style.padding = "12px";
     panel.style.borderRadius = "16px";
@@ -440,6 +562,43 @@
         updateBatchButtonState();
       });
 
+      const thumb = document.createElement("div");
+      thumb.style.flex = "0 0 52px";
+      thumb.style.width = "52px";
+      thumb.style.height = "30px";
+      thumb.style.borderRadius = "4px";
+      thumb.style.overflow = "hidden";
+      thumb.style.background = "#e8eef8";
+      thumb.style.display = "flex";
+      thumb.style.alignItems = "center";
+      thumb.style.justifyContent = "center";
+
+      const renderPlaceholder = () => {
+        thumb.textContent = "";
+        const placeholder = document.createElement("img");
+        placeholder.src = BUTTON_ICON_URL;
+        placeholder.alt = "";
+        placeholder.style.width = "16px";
+        placeholder.style.height = "16px";
+        placeholder.style.opacity = "0.5";
+        placeholder.style.objectFit = "contain";
+        thumb.appendChild(placeholder);
+      };
+
+      if (item.thumbnail) {
+        const img = document.createElement("img");
+        img.src = item.thumbnail;
+        img.alt = "";
+        img.referrerPolicy = "no-referrer";
+        img.style.width = "100%";
+        img.style.height = "100%";
+        img.style.objectFit = "cover";
+        img.addEventListener("error", renderPlaceholder);
+        thumb.appendChild(img);
+      } else {
+        renderPlaceholder();
+      }
+
       const content = document.createElement("button");
       content.type = "button";
       content.title = item.url;
@@ -488,6 +647,7 @@
       });
 
       entry.appendChild(checkbox);
+      entry.appendChild(thumb);
       entry.appendChild(content);
       entry.appendChild(copyButton);
       panel.appendChild(entry);
