@@ -40,6 +40,26 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
+        .on_window_event(|window, event| {
+            let tauri::WindowEvent::CloseRequested { api, .. } = event else {
+                return;
+            };
+            let Some(token) = preview::token_from_window_label(window.label()).map(str::to_owned)
+            else {
+                return;
+            };
+
+            api.prevent_close();
+            let window = window.clone();
+            let app_handle = window.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = window.hide();
+                let _ = window.destroy();
+
+                let state = app_handle.state::<AppState>();
+                preview::close_session(&state, &token).await;
+            });
+        })
         .setup(|app| {
             #[cfg(any(windows, target_os = "linux"))]
             app.deep_link().register_all()?;

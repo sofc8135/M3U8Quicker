@@ -5,7 +5,6 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
-  closePreviewSession,
   extractPreviewThumbnails,
   type PreviewThumbnail,
 } from "../services/api";
@@ -38,9 +37,6 @@ export function PreviewWindow() {
     if (!token) return;
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    setThumbnails([]);
-    setLoadedKey(null);
-    setErrorText(null);
 
     void listen<PreviewThumbnailEvent>("preview-thumbnail", (event) => {
       const payload = event.payload;
@@ -74,29 +70,28 @@ export function PreviewWindow() {
     };
   }, [token, count]);
 
+  const resetPreviewState = () => {
+    setThumbnails([]);
+    setLoadedKey(null);
+    setErrorText(null);
+  };
+
   const handleDecrement = () => {
+    resetPreviewState();
     setCount((current) => Math.max(MIN_COUNT, current - STEP));
   };
   const handleIncrement = () => {
+    resetPreviewState();
     setCount((current) => Math.min(MAX_COUNT, current + STEP));
   };
   const handleClose = async () => {
     if (closing) return;
     setClosing(true);
     try {
-      if (token) {
-        await closePreviewSession(token);
-      }
+      await getCurrentWebviewWindow().close();
     } catch (error) {
-      console.error("Failed to close preview session", error);
-    } finally {
-      const window = getCurrentWebviewWindow();
-      try {
-        await window.hide();
-      } catch {
-        // Ignore and still try to destroy the window.
-      }
-      await window.destroy();
+      console.error("Failed to close preview window", error);
+      setClosing(false);
     }
   };
 

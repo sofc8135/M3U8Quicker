@@ -1677,6 +1677,7 @@ pub async fn set_ffmpeg_enabled(
 #[derive(Debug, serde::Serialize)]
 pub struct CreatePreviewSessionResponse {
     pub token: String,
+    pub window_label: String,
 }
 
 #[tauri::command]
@@ -1704,7 +1705,10 @@ pub async fn create_preview_session(
         normalized_headers,
     )
     .await?;
-    Ok(CreatePreviewSessionResponse { token })
+    Ok(CreatePreviewSessionResponse {
+        window_label: preview::window_label(&token),
+        token,
+    })
 }
 
 #[tauri::command]

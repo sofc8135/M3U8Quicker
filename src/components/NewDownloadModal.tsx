@@ -4,6 +4,7 @@ import { FolderOpenOutlined } from "@ant-design/icons";
 import { open } from "@tauri-apps/plugin-dialog";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
+  closePreviewSession,
   createPreviewSession,
   getAppSettings,
   getDefaultDownloadDir,
@@ -291,8 +292,10 @@ export function NewDownloadModal({
         return;
       }
 
-      const { token } = await createPreviewSession(url, extraHeaders);
-      const label = `preview-${token.slice(0, 8)}`;
+      const { token, window_label: label } = await createPreviewSession(
+        url,
+        extraHeaders
+      );
       const previewUrl = `/?${new URLSearchParams({
         view: "preview",
         token,
@@ -314,6 +317,7 @@ export function NewDownloadModal({
       });
       previewWindow.once("tauri://error", (event) => {
         console.error("Failed to create preview window", event);
+        void closePreviewSession(token);
         message.error("打开预览窗口失败");
       });
     } catch (e: unknown) {

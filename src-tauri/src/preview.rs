@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -12,6 +12,7 @@ use crate::ffmpeg;
 use crate::state::AppState;
 
 const PREVIEW_THUMBNAIL_WIDTH: u32 = 320;
+const PREVIEW_WINDOW_LABEL_PREFIX: &str = "preview-";
 pub const MIN_THUMBNAIL_COUNT: usize = 9;
 pub const MAX_THUMBNAIL_COUNT: usize = 99;
 
@@ -21,6 +22,7 @@ pub struct PreviewSession {
     pub extra_headers: Option<String>,
     pub cache_dir: PathBuf,
     pub duration_secs: Mutex<Option<f64>>,
+    pub operation_lock: RwLock<()>,
     pub cancel_token: CancellationToken,
 }
 
@@ -53,6 +55,7 @@ pub async fn create_session(
         extra_headers,
         cache_dir,
         duration_secs: Mutex::new(None),
+        operation_lock: RwLock::new(()),
         cancel_token: CancellationToken::new(),
     });
 
@@ -81,6 +84,10 @@ pub async fn extract_thumbnails(
             .cloned()
             .ok_or_else(|| AppError::InvalidInput("预览会话不存在或已关闭".to_string()))?
     };
+    let _operation_guard = session.operation_lock.read().await;
+    if session.cancel_token.is_cancelled() {
+        return Err(AppError::InvalidInput("预览已取消".to_string()));
+    }
 
     let ffmpeg_path = ffmpeg::resolve_ffmpeg_path(app_handle)
         .await
@@ -154,8 +161,19 @@ pub async fn close_session(state: &AppState, token: &str) {
     };
     if let Some(session) = session {
         session.cancel_token.cancel();
+        let _operation_guard = session.operation_lock.write().await;
         let _ = tokio::fs::remove_dir_all(&session.cache_dir).await;
     }
+}
+
+pub fn window_label(token: &str) -> String {
+    format!("{}{}", PREVIEW_WINDOW_LABEL_PREFIX, token)
+}
+
+pub fn token_from_window_label(label: &str) -> Option<&str> {
+    label
+        .strip_prefix(PREVIEW_WINDOW_LABEL_PREFIX)
+        .filter(|token| !token.is_empty())
 }
 
 fn preview_root_dir(app_handle: &AppHandle) -> Result<PathBuf, AppError> {
@@ -164,4 +182,19 @@ fn preview_root_dir(app_handle: &AppHandle) -> Result<PathBuf, AppError> {
         .app_cache_dir()
         .map_err(|e| AppError::Internal(format!("无法获取应用缓存目录: {}", e)))?;
     Ok(cache_dir.join("preview"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preview_window_label_round_trips_token() {
+        let token = "12345678-90ab-cdef-1234-567890abcdef";
+        let label = window_label(token);
+
+        assert_eq!(token_from_window_label(&label), Some(token));
+        assert_eq!(token_from_window_label("main"), None);
+        assert_eq!(token_from_window_label("preview-"), None);
+    }
 }

@@ -435,7 +435,7 @@ export function SettingsModal({
           <Space direction="vertical" size={4} style={{ width: "100%" }}>
             <Typography.Text strong>关于</Typography.Text>
             <Typography.Text type="secondary">
-              版本：{appVersion || "-"}　　作者：<a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://github.com/Liubsyy/M3U8Quicker"); }}>Liubsyy</a>
+              版本：{appVersion || "-"} 作者：<a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://github.com/Liubsyy/M3U8Quicker"); }}>Liubsyy</a>
             </Typography.Text>
           </Space>
         </Space>

@@ -296,8 +296,8 @@ export interface PreviewThumbnail {
 export async function createPreviewSession(
   url: string,
   extraHeaders?: string
-): Promise<{ token: string }> {
-  return invoke<{ token: string }>("create_preview_session", {
+): Promise<{ token: string; window_label: string }> {
+  return invoke<{ token: string; window_label: string }>("create_preview_session", {
     url,
     extraHeaders: extraHeaders ?? null,
   });
