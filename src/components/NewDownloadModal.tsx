@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Modal, Form, Input, Button, Space, Radio, Typography, message } from "antd";
-import { FolderOpenOutlined } from "@ant-design/icons";
+import { EyeOutlined, FolderOpenOutlined } from "@ant-design/icons";
 import { open } from "@tauri-apps/plugin-dialog";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
@@ -418,7 +418,13 @@ export function NewDownloadModal({
         <Form.Item style={{ marginBottom: 0, textAlign: "right" }}>
           <Space>
             <Button onClick={onClose}>取消</Button>
-            <Button onClick={handlePreview} loading={previewing}>
+            <Button
+              color="cyan"
+              variant="solid"
+              icon={<EyeOutlined />}
+              onClick={handlePreview}
+              loading={previewing}
+            >
               预览
             </Button>
             <Button type="primary" htmlType="submit" loading={submitting}>

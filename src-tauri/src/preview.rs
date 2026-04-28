@@ -122,7 +122,10 @@ pub async fn extract_thumbnails(
             return Err(AppError::InvalidInput("预览已取消".to_string()));
         }
         let time = duration_secs * (index as f64 + 0.5) / (count as f64);
-        let output_path = session.cache_dir.join(format!("{:03}.jpg", index));
+        let output_path = thumbnail_path_for_count(&session.cache_dir, count, index);
+        if let Some(parent) = output_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
         if !tokio::fs::try_exists(&output_path).await.unwrap_or(false) {
             ffmpeg::extract_thumbnail_jpeg_cancellable(
                 &ffmpeg_path,
@@ -184,6 +187,12 @@ fn preview_root_dir(app_handle: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(cache_dir.join("preview"))
 }
 
+fn thumbnail_path_for_count(cache_dir: &std::path::Path, count: usize, index: usize) -> PathBuf {
+    cache_dir
+        .join(format!("count_{:03}", count))
+        .join(format!("{:03}.jpg", index))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,5 +205,19 @@ mod tests {
         assert_eq!(token_from_window_label(&label), Some(token));
         assert_eq!(token_from_window_label("main"), None);
         assert_eq!(token_from_window_label("preview-"), None);
+    }
+
+    #[test]
+    fn thumbnail_path_includes_requested_count() {
+        let cache_dir = PathBuf::from("preview-session");
+
+        assert_eq!(
+            thumbnail_path_for_count(&cache_dir, 9, 0),
+            cache_dir.join("count_009").join("000.jpg")
+        );
+        assert_eq!(
+            thumbnail_path_for_count(&cache_dir, 18, 0),
+            cache_dir.join("count_018").join("000.jpg")
+        );
     }
 }

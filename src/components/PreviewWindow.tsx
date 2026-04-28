@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Empty, Space, Spin, Tag, Typography } from "antd";
-import { CloseOutlined, MinusOutlined, PlusOutlined } from "@ant-design/icons";
+import { MinusOutlined, PlusOutlined } from "@ant-design/icons";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
   extractPreviewThumbnails,
   type PreviewThumbnail,
@@ -30,7 +29,6 @@ export function PreviewWindow() {
   const [errorText, setErrorText] = useState<string | null>(
     token ? null : "预览参数缺失，无法打开窗口。"
   );
-  const [closing, setClosing] = useState(false);
   const loading = Boolean(token) && loadedKey !== count;
 
   useEffect(() => {
@@ -84,17 +82,6 @@ export function PreviewWindow() {
     resetPreviewState();
     setCount((current) => Math.min(MAX_COUNT, current + STEP));
   };
-  const handleClose = async () => {
-    if (closing) return;
-    setClosing(true);
-    try {
-      await getCurrentWebviewWindow().close();
-    } catch (error) {
-      console.error("Failed to close preview window", error);
-      setClosing(false);
-    }
-  };
-
   return (
     <div
       style={{
@@ -133,15 +120,6 @@ export function PreviewWindow() {
             disabled={loading || count >= MAX_COUNT}
           >
             多 9 张
-          </Button>
-          <Button
-            icon={<CloseOutlined />}
-            onClick={() => {
-              void handleClose();
-            }}
-            loading={closing}
-          >
-            关闭
           </Button>
         </Space>
       </div>
