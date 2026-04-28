@@ -907,6 +907,7 @@ pub async fn get_app_settings(state: State<'_, AppState>) -> Result<AppSettings,
         proxy: state.proxy_settings.lock().await.clone(),
         download_concurrency: *state.max_concurrent_segments.lock().await,
         download_speed_limit_kbps: state.download_rate_limiter.limit_kbps().await,
+        preview_columns: *state.preview_columns.lock().await,
         delete_ts_temp_dir_after_download: *state.delete_ts_temp_dir_after_download.lock().await,
         convert_to_mp4: *state.convert_to_mp4.lock().await,
         ffmpeg_enabled: *state.ffmpeg_enabled.lock().await,
@@ -1001,6 +1002,33 @@ pub async fn set_download_speed_limit(
 
     persistence::update_settings(&app_handle, |settings| {
         settings.download_speed_limit_kbps = normalized_limit;
+    })
+    .await;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_preview_columns(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    preview_columns: usize,
+) -> Result<(), AppError> {
+    if !(MIN_PREVIEW_COLUMNS..=MAX_PREVIEW_COLUMNS).contains(&preview_columns) {
+        return Err(AppError::InvalidInput(format!(
+            "每行预览图数量必须在 {} 到 {} 之间",
+            MIN_PREVIEW_COLUMNS, MAX_PREVIEW_COLUMNS
+        )));
+    }
+
+    let normalized_columns = normalize_preview_columns(preview_columns);
+    {
+        let mut columns = state.preview_columns.lock().await;
+        *columns = normalized_columns;
+    }
+
+    persistence::update_settings(&app_handle, |settings| {
+        settings.preview_columns = normalized_columns;
     })
     .await;
 

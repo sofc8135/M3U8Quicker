@@ -96,6 +96,10 @@ pub fn run() {
                     .set_limit_kbps(settings.download_speed_limit_kbps)
                     .await;
                 {
+                    let mut preview_columns = state.preview_columns.lock().await;
+                    *preview_columns = settings.preview_columns;
+                }
+                {
                     let mut delete_ts_temp_dir_after_download =
                         state.delete_ts_temp_dir_after_download.lock().await;
                     *delete_ts_temp_dir_after_download = settings.delete_ts_temp_dir_after_download;
@@ -162,6 +166,7 @@ pub fn run() {
             commands::set_proxy_settings,
             commands::set_download_concurrency,
             commands::set_download_speed_limit,
+            commands::set_preview_columns,
             commands::set_download_output_settings,
             commands::open_file_location,
             commands::open_url,

@@ -225,6 +225,9 @@ pub const DEFAULT_DOWNLOAD_CONCURRENCY: usize = 8;
 pub const MIN_DOWNLOAD_CONCURRENCY: usize = 1;
 pub const MAX_DOWNLOAD_CONCURRENCY: usize = 64;
 pub const DEFAULT_DOWNLOAD_SPEED_LIMIT_KBPS: u64 = 0;
+pub const DEFAULT_PREVIEW_COLUMNS: usize = 3;
+pub const MIN_PREVIEW_COLUMNS: usize = 1;
+pub const MAX_PREVIEW_COLUMNS: usize = 12;
 
 pub fn normalize_download_concurrency(value: usize) -> usize {
     value.clamp(MIN_DOWNLOAD_CONCURRENCY, MAX_DOWNLOAD_CONCURRENCY)
@@ -232,6 +235,10 @@ pub fn normalize_download_concurrency(value: usize) -> usize {
 
 pub fn normalize_download_speed_limit_kbps(value: u64) -> u64 {
     value
+}
+
+pub fn normalize_preview_columns(value: usize) -> usize {
+    value.clamp(MIN_PREVIEW_COLUMNS, MAX_PREVIEW_COLUMNS)
 }
 
 impl Default for ProxySettings {
@@ -256,6 +263,7 @@ pub struct AppSettings {
     pub proxy: ProxySettings,
     pub download_concurrency: usize,
     pub download_speed_limit_kbps: u64,
+    pub preview_columns: usize,
     pub delete_ts_temp_dir_after_download: bool,
     pub convert_to_mp4: bool,
     #[serde(default = "default_ffmpeg_enabled")]
@@ -270,6 +278,7 @@ impl Default for AppSettings {
             proxy: ProxySettings::default(),
             download_concurrency: DEFAULT_DOWNLOAD_CONCURRENCY,
             download_speed_limit_kbps: DEFAULT_DOWNLOAD_SPEED_LIMIT_KBPS,
+            preview_columns: DEFAULT_PREVIEW_COLUMNS,
             delete_ts_temp_dir_after_download: true,
             convert_to_mp4: true,
             ffmpeg_enabled: true,
@@ -287,6 +296,7 @@ impl AppSettings {
         self.download_concurrency = normalize_download_concurrency(self.download_concurrency);
         self.download_speed_limit_kbps =
             normalize_download_speed_limit_kbps(self.download_speed_limit_kbps);
+        self.preview_columns = normalize_preview_columns(self.preview_columns);
     }
 }
 

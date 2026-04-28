@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, RwLock};
@@ -12,6 +13,7 @@ use crate::ffmpeg;
 use crate::state::AppState;
 
 const PREVIEW_THUMBNAIL_WIDTH: u32 = 320;
+const PREVIEW_THUMBNAIL_CONCURRENCY: usize = 3;
 const PREVIEW_WINDOW_LABEL_PREFIX: &str = "preview-";
 pub const MIN_THUMBNAIL_COUNT: usize = 9;
 pub const MAX_THUMBNAIL_COUNT: usize = 99;
@@ -116,43 +118,59 @@ pub async fn extract_thumbnails(
         }
     };
 
-    let mut results = Vec::with_capacity(count);
-    for index in 0..count {
-        if cancel_token.is_cancelled() {
-            return Err(AppError::InvalidInput("预览已取消".to_string()));
-        }
-        let time = duration_secs * (index as f64 + 0.5) / (count as f64);
-        let output_path = thumbnail_path_for_count(&session.cache_dir, count, index);
-        if let Some(parent) = output_path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        if !tokio::fs::try_exists(&output_path).await.unwrap_or(false) {
-            ffmpeg::extract_thumbnail_jpeg_cancellable(
-                &ffmpeg_path,
-                &session.url,
-                session.extra_headers.as_deref(),
-                time,
-                &output_path,
-                PREVIEW_THUMBNAIL_WIDTH,
-                &cancel_token,
-            )
-            .await?;
-        }
-        let thumbnail = PreviewThumbnail {
-            index,
-            time_secs: time,
-            path: output_path.to_string_lossy().into_owned(),
-        };
-        let _ = app_handle.emit(
-            "preview-thumbnail",
-            PreviewThumbnailEvent {
-                token: token.to_string(),
-                count,
-                thumbnail: thumbnail.clone(),
-            },
-        );
-        results.push(thumbnail);
-    }
+    let thumbnail_dir = thumbnail_dir_for_count(&session.cache_dir, count);
+    tokio::fs::create_dir_all(&thumbnail_dir).await?;
+
+    let results = stream::iter(0..count)
+        .map(|index| {
+            let app_handle = app_handle.clone();
+            let cancel_token = cancel_token.clone();
+            let ffmpeg_path = ffmpeg_path.clone();
+            let session = Arc::clone(&session);
+            let token = token.to_string();
+
+            async move {
+                if cancel_token.is_cancelled() {
+                    return Err(AppError::InvalidInput("预览已取消".to_string()));
+                }
+
+                let time = duration_secs * (index as f64 + 0.5) / (count as f64);
+                let output_path = thumbnail_path_for_count(&session.cache_dir, count, index);
+                if !tokio::fs::try_exists(&output_path).await.unwrap_or(false) {
+                    ffmpeg::extract_thumbnail_jpeg_cancellable(
+                        &ffmpeg_path,
+                        &session.url,
+                        session.extra_headers.as_deref(),
+                        time,
+                        &output_path,
+                        PREVIEW_THUMBNAIL_WIDTH,
+                        &cancel_token,
+                    )
+                    .await?;
+                }
+
+                let thumbnail = PreviewThumbnail {
+                    index,
+                    time_secs: time,
+                    path: output_path.to_string_lossy().into_owned(),
+                };
+                let _ = app_handle.emit(
+                    "preview-thumbnail",
+                    PreviewThumbnailEvent {
+                        token,
+                        count,
+                        thumbnail: thumbnail.clone(),
+                    },
+                );
+                Ok(thumbnail)
+            }
+        })
+        .buffer_unordered(PREVIEW_THUMBNAIL_CONCURRENCY)
+        .collect::<Vec<Result<PreviewThumbnail, AppError>>>()
+        .await;
+
+    let mut results = results.into_iter().collect::<Result<Vec<_>, _>>()?;
+    results.sort_by_key(|thumbnail| thumbnail.index);
 
     Ok(results)
 }
@@ -188,9 +206,11 @@ fn preview_root_dir(app_handle: &AppHandle) -> Result<PathBuf, AppError> {
 }
 
 fn thumbnail_path_for_count(cache_dir: &std::path::Path, count: usize, index: usize) -> PathBuf {
-    cache_dir
-        .join(format!("count_{:03}", count))
-        .join(format!("{:03}.jpg", index))
+    thumbnail_dir_for_count(cache_dir, count).join(format!("{:03}.jpg", index))
+}
+
+fn thumbnail_dir_for_count(cache_dir: &std::path::Path, count: usize) -> PathBuf {
+    cache_dir.join(format!("count_{:03}", count))
 }
 
 #[cfg(test)]

@@ -148,6 +148,10 @@ export async function setDownloadSpeedLimit(
   return invoke("set_download_speed_limit", { downloadSpeedLimitKbps });
 }
 
+export async function setPreviewColumns(previewColumns: number): Promise<void> {
+  return invoke("set_preview_columns", { previewColumns });
+}
+
 export async function setDownloadOutputSettings(
   deleteTsTempDirAfterDownload: boolean,
   convertToMp4: boolean
