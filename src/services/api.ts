@@ -286,3 +286,33 @@ export async function setFfmpegEnabled(enabled: boolean): Promise<void> {
 export async function openUrl(url: string): Promise<void> {
   return invoke("open_url", { url });
 }
+
+export interface PreviewThumbnail {
+  index: number;
+  time_secs: number;
+  path: string;
+}
+
+export async function createPreviewSession(
+  url: string,
+  extraHeaders?: string
+): Promise<{ token: string }> {
+  return invoke<{ token: string }>("create_preview_session", {
+    url,
+    extraHeaders: extraHeaders ?? null,
+  });
+}
+
+export async function extractPreviewThumbnails(
+  token: string,
+  count: number
+): Promise<PreviewThumbnail[]> {
+  return invoke<PreviewThumbnail[]>("extract_preview_thumbnails", {
+    token,
+    count,
+  });
+}
+
+export async function closePreviewSession(token: string): Promise<void> {
+  return invoke("close_preview_session", { token });
+}

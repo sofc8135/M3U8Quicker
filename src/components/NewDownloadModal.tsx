@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { Modal, Form, Input, Button, Space, Radio, Typography, message } from "antd";
 import { FolderOpenOutlined } from "@ant-design/icons";
 import { open } from "@tauri-apps/plugin-dialog";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
+  createPreviewSession,
   getAppSettings,
   getDefaultDownloadDir,
   getFfmpegStatus,
@@ -46,6 +48,7 @@ export function NewDownloadModal({
 }: NewDownloadModalProps) {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [outputDir, setOutputDir] = useState("");
   const [filenameTouched, setFilenameTouched] = useState(false);
   const [downloadMode, setDownloadMode] = useState<DownloadMode>("hls");
@@ -240,6 +243,87 @@ export function NewDownloadModal({
     }
   };
 
+  const ensurePreviewFfmpegReady = async () => {
+    try {
+      const [settings, ffmpegStatus] = await Promise.all([
+        getAppSettings(),
+        getFfmpegStatus(),
+      ]);
+      if (settings.ffmpeg_enabled && ffmpegStatus.kind === "installed") {
+        return true;
+      }
+    } catch {
+      // fall through to prompt
+    }
+
+    return await new Promise<boolean>((resolve) => {
+      Modal.confirm({
+        title: "预览需要 FFmpeg",
+        content: (
+          <Typography.Paragraph style={{ marginBottom: 0 }}>
+            视频预览需要 FFmpeg 抽帧，请先在设置中开启并配置 FFmpeg。
+          </Typography.Paragraph>
+        ),
+        okText: "前往设置",
+        cancelText: "取消",
+        onOk: () => {
+          onOpenFfmpegSettings();
+          resolve(false);
+        },
+        onCancel: () => resolve(false),
+      });
+    });
+  };
+
+  const handlePreview = async () => {
+    try {
+      const values = await form.validateFields(["url"]);
+      const url = (values.url as string | undefined)?.trim();
+      if (!url) {
+        return;
+      }
+      const extraHeaders =
+        (form.getFieldValue("extra_headers") as string | undefined)?.trim() ||
+        undefined;
+
+      setPreviewing(true);
+      if (!(await ensurePreviewFfmpegReady())) {
+        return;
+      }
+
+      const { token } = await createPreviewSession(url, extraHeaders);
+      const label = `preview-${token.slice(0, 8)}`;
+      const previewUrl = `/?${new URLSearchParams({
+        view: "preview",
+        token,
+      }).toString()}`;
+
+      const previewWindow = new WebviewWindow(label, {
+        url: previewUrl,
+        title: "视频预览",
+        width: 1080,
+        height: 720,
+        minWidth: 720,
+        minHeight: 480,
+        resizable: true,
+        center: true,
+      });
+
+      previewWindow.once("tauri://created", () => {
+        void previewWindow.setFocus();
+      });
+      previewWindow.once("tauri://error", (event) => {
+        console.error("Failed to create preview window", event);
+        message.error("打开预览窗口失败");
+      });
+    } catch (e: unknown) {
+      if (e && typeof e === "object" && "errorFields" in e) return;
+      message.error(`生成预览失败: ${formatCreateDownloadError(e)}`);
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const inferredDirectFileType = inferDirectFileTypeFromUrl(watchedUrl);
   const urlLabel = downloadMode === "direct" ? "地址" : "M3U8 地址";
   const supportedDirectTypes = DIRECT_FILE_TYPES.join(" / ");
@@ -330,6 +414,9 @@ export function NewDownloadModal({
         <Form.Item style={{ marginBottom: 0, textAlign: "right" }}>
           <Space>
             <Button onClick={onClose}>取消</Button>
+            <Button onClick={handlePreview} loading={previewing}>
+              预览
+            </Button>
             <Button type="primary" htmlType="submit" loading={submitting}>
               开始下载
             </Button>

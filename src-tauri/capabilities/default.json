@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capabilities for M3U8 Quicker",
-  "windows": ["main", "player-*"],
+  "windows": ["main", "player-*", "preview-*"],
   "permissions": [
     "core:default",
     "core:window:allow-create",

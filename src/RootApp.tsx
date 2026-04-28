@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ConfigProvider, theme } from "antd";
 import App from "./App";
 import { PlaybackWindow } from "./components/PlaybackWindow";
+import { PreviewWindow } from "./components/PreviewWindow";
 import { useDisableDefaultContextMenu } from "./hooks/useDisableDefaultContextMenu";
 import { darkTheme, lightTheme } from "./styles/theme";
 import {
@@ -29,10 +30,14 @@ export function RootApp() {
       ? { ...lightTheme, algorithm: theme.defaultAlgorithm }
       : { ...darkTheme, algorithm: theme.darkAlgorithm };
 
+  const view = new URLSearchParams(window.location.search).get("view");
+
   return (
     <ConfigProvider theme={themeConfig}>
-      {new URLSearchParams(window.location.search).get("view") === "player" ? (
+      {view === "player" ? (
         <PlaybackWindow />
+      ) : view === "preview" ? (
+        <PreviewWindow />
       ) : (
         <App themeMode={themeMode} onThemeModeChange={setThemeMode} />
       )}

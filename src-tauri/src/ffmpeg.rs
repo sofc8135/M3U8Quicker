@@ -1,9 +1,12 @@
 use std::collections::HashSet;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::process::Output;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::io::AsyncReadExt;
+use tokio_util::sync::CancellationToken;
 
 use crate::error::AppError;
 use crate::state::AppState;
@@ -439,6 +442,213 @@ pub async fn download_ffmpeg(app_handle: AppHandle) -> Result<PathBuf, AppError>
     );
 
     Ok(final_path)
+}
+
+/// Probe duration and stop the ffprobe/ffmpeg child promptly when cancelled.
+pub async fn probe_media_duration_secs_cancellable(
+    ffmpeg_path: &Path,
+    input: &str,
+    extra_headers: Option<&str>,
+    cancel_token: &CancellationToken,
+) -> Result<f64, AppError> {
+    let formatted_headers = format_ffmpeg_headers(extra_headers);
+    let sibling_ffprobe = ffmpeg_path.with_file_name(ffprobe_binary_name());
+
+    if let Ok(value) = run_ffprobe_duration_cancellable(
+        sibling_ffprobe.as_os_str(),
+        input,
+        formatted_headers.as_deref(),
+        cancel_token,
+    )
+    .await
+    {
+        if value.is_finite() && value > 0.0 {
+            return Ok(value);
+        }
+    }
+
+    if let Ok(value) = run_ffprobe_duration_cancellable(
+        OsStr::new("ffprobe"),
+        input,
+        formatted_headers.as_deref(),
+        cancel_token,
+    )
+    .await
+    {
+        if value.is_finite() && value > 0.0 {
+            return Ok(value);
+        }
+    }
+
+    probe_duration_via_ffmpeg_cancellable(
+        ffmpeg_path,
+        input,
+        formatted_headers.as_deref(),
+        cancel_token,
+    )
+    .await
+}
+
+async fn run_ffprobe_duration_cancellable(
+    ffprobe_command: &OsStr,
+    input: &str,
+    formatted_headers: Option<&str>,
+    cancel_token: &CancellationToken,
+) -> Result<f64, AppError> {
+    let mut command = tokio::process::Command::new(ffprobe_command);
+    configure_background_command(&mut command);
+    if let Some(headers) = formatted_headers {
+        command.args(["-headers", headers]);
+    }
+    command
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            input,
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null());
+
+    let output = run_command_output_cancellable(command, cancel_token)
+        .await
+        .map_err(|e| match e {
+            AppError::InvalidInput(_) => e,
+            _ => AppError::Conversion(format!("启动 ffprobe 失败: {}", e)),
+        })?;
+
+    if !output.status.success() {
+        return Err(AppError::Conversion(format!(
+            "ffprobe 退出码 {}",
+            output.status
+        )));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    stdout
+        .parse::<f64>()
+        .map_err(|_| AppError::Conversion("ffprobe 未返回有效的时长".to_string()))
+}
+
+async fn probe_duration_via_ffmpeg_cancellable(
+    ffmpeg_path: &Path,
+    input: &str,
+    formatted_headers: Option<&str>,
+    cancel_token: &CancellationToken,
+) -> Result<f64, AppError> {
+    let mut command = tokio::process::Command::new(ffmpeg_path);
+    configure_background_command(&mut command);
+    if let Some(headers) = formatted_headers {
+        command.args(["-headers", headers]);
+    }
+    command
+        .args(["-hide_banner", "-i", input, "-f", "null", "-"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .stdin(std::process::Stdio::null());
+
+    let output = run_command_output_cancellable(command, cancel_token)
+        .await
+        .map_err(|e| match e {
+            AppError::InvalidInput(_) => e,
+            _ => AppError::Conversion(format!("启动 ffmpeg 失败: {}", e)),
+        })?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    parse_ffmpeg_duration_line(&stderr)
+        .ok_or_else(|| AppError::Conversion("无法识别视频时长".to_string()))
+}
+
+fn parse_ffmpeg_duration_line(stderr: &str) -> Option<f64> {
+    for line in stderr.lines() {
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("Duration:") {
+            let timestamp = rest.split(',').next()?.trim();
+            return parse_hms_timestamp(timestamp);
+        }
+    }
+    None
+}
+
+fn parse_hms_timestamp(text: &str) -> Option<f64> {
+    let parts: Vec<&str> = text.split(':').collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let hours: f64 = parts[0].parse().ok()?;
+    let minutes: f64 = parts[1].parse().ok()?;
+    let seconds: f64 = parts[2].parse().ok()?;
+    Some(hours * 3600.0 + minutes * 60.0 + seconds)
+}
+
+pub async fn extract_thumbnail_jpeg_cancellable(
+    ffmpeg_path: &Path,
+    input: &str,
+    extra_headers: Option<&str>,
+    time_secs: f64,
+    output_path: &Path,
+    target_width: u32,
+    cancel_token: &CancellationToken,
+) -> Result<(), AppError> {
+    let formatted_headers = format_ffmpeg_headers(extra_headers);
+    let mut args: Vec<String> = vec![
+        "-y".to_string(),
+        "-hide_banner".to_string(),
+        "-ss".to_string(),
+        format!("{:.3}", time_secs.max(0.0)),
+    ];
+    if let Some(headers) = formatted_headers {
+        args.push("-headers".to_string());
+        args.push(headers);
+    }
+    args.extend([
+        "-i".to_string(),
+        input.to_string(),
+        "-frames:v".to_string(),
+        "1".to_string(),
+        "-vf".to_string(),
+        format!("scale={}:-2", target_width),
+        "-q:v".to_string(),
+        "4".to_string(),
+        output_path.to_string_lossy().into_owned(),
+    ]);
+
+    run_ffmpeg_command_cancellable(ffmpeg_path, &args, cancel_token).await
+}
+
+fn format_ffmpeg_headers(raw: Option<&str>) -> Option<String> {
+    let raw = raw?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let mut formatted = String::new();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some((name, value)) = trimmed.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        let value = value.trim();
+        if name.is_empty() || value.is_empty() {
+            continue;
+        }
+        formatted.push_str(name);
+        formatted.push_str(": ");
+        formatted.push_str(value);
+        formatted.push_str("\r\n");
+    }
+    if formatted.is_empty() {
+        None
+    } else {
+        Some(formatted)
+    }
 }
 
 /// Convert TS to MP4 using ffmpeg: stream-copy with faststart.
@@ -1121,6 +1331,43 @@ async fn run_ffmpeg_command(ffmpeg_path: &Path, args: &[String]) -> Result<(), A
     run_ffmpeg_command_in_dir(ffmpeg_path, args, None).await
 }
 
+async fn run_ffmpeg_command_cancellable(
+    ffmpeg_path: &Path,
+    args: &[String],
+    cancel_token: &CancellationToken,
+) -> Result<(), AppError> {
+    let mut command = tokio::process::Command::new(ffmpeg_path);
+    configure_background_command(&mut command);
+    command
+        .args(args)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .stdin(std::process::Stdio::null());
+
+    let output = run_command_output_cancellable(command, cancel_token).await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail = stderr
+            .lines()
+            .rev()
+            .take(6)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join(" | ");
+        let detail = if tail.trim().is_empty() {
+            format!("FFmpeg 退出码 {}", output.status)
+        } else {
+            tail
+        };
+        return Err(AppError::Conversion(format!("FFmpeg 处理失败: {}", detail)));
+    }
+
+    Ok(())
+}
+
 async fn run_ffmpeg_command_in_dir(
     ffmpeg_path: &Path,
     args: &[String],
@@ -1162,6 +1409,57 @@ async fn run_ffmpeg_command_in_dir(
     }
 
     Ok(())
+}
+
+async fn run_command_output_cancellable(
+    mut command: tokio::process::Command,
+    cancel_token: &CancellationToken,
+) -> Result<Output, AppError> {
+    let mut child = command
+        .spawn()
+        .map_err(|e| AppError::Conversion(format!("启动 FFmpeg 失败: {}", e)))?;
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout_task = stdout.map(|mut stream| {
+        tokio::spawn(async move {
+            let mut buffer = Vec::new();
+            let _ = stream.read_to_end(&mut buffer).await;
+            buffer
+        })
+    });
+    let stderr_task = stderr.map(|mut stream| {
+        tokio::spawn(async move {
+            let mut buffer = Vec::new();
+            let _ = stream.read_to_end(&mut buffer).await;
+            buffer
+        })
+    });
+
+    let status = tokio::select! {
+        result = child.wait() => {
+            result.map_err(|e| AppError::Conversion(format!("等待 FFmpeg 结束失败: {}", e)))?
+        }
+        _ = cancel_token.cancelled() => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            return Err(AppError::InvalidInput("预览已取消".to_string()));
+        }
+    };
+
+    let stdout = match stdout_task {
+        Some(task) => task.await.unwrap_or_default(),
+        None => Vec::new(),
+    };
+    let stderr = match stderr_task {
+        Some(task) => task.await.unwrap_or_default(),
+        None => Vec::new(),
+    };
+
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 fn ffprobe_binary_name() -> &'static str {
@@ -1766,5 +2064,38 @@ mod tests {
     fn calculate_subtitle_track_size_uses_larger_box_height() {
         assert_eq!(calculate_subtitle_track_size((1920, 1080)), (1920, 237));
         assert_eq!(calculate_subtitle_track_size((1280, 360)), (1280, 128));
+    }
+
+    #[test]
+    fn format_ffmpeg_headers_normalizes_lines_to_crlf() {
+        let formatted = format_ffmpeg_headers(Some("referer: https://a.com\norigin:https://b.com\n"));
+        assert_eq!(
+            formatted.as_deref(),
+            Some("referer: https://a.com\r\norigin: https://b.com\r\n")
+        );
+    }
+
+    #[test]
+    fn format_ffmpeg_headers_returns_none_for_blank_input() {
+        assert_eq!(format_ffmpeg_headers(None), None);
+        assert_eq!(format_ffmpeg_headers(Some("   \n  \n")), None);
+    }
+
+    #[test]
+    fn format_ffmpeg_headers_skips_invalid_lines() {
+        let formatted = format_ffmpeg_headers(Some("noseparator\nreferer: https://a.com"));
+        assert_eq!(formatted.as_deref(), Some("referer: https://a.com\r\n"));
+    }
+
+    #[test]
+    fn parse_ffmpeg_duration_line_extracts_seconds() {
+        let stderr = "Input #0, hls, from '...':\n  Duration: 00:01:23.45, start: 0.000000, bitrate: 800 kb/s\n";
+        let value = parse_ffmpeg_duration_line(stderr).expect("duration parsed");
+        assert!((value - 83.45).abs() < 0.01);
+    }
+
+    #[test]
+    fn parse_ffmpeg_duration_line_returns_none_when_missing() {
+        assert_eq!(parse_ffmpeg_duration_line("nothing here"), None);
     }
 }

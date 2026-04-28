@@ -15,6 +15,7 @@ use crate::error::AppError;
 use crate::models::*;
 use crate::persistence;
 use crate::playback;
+use crate::preview;
 use crate::state::AppState;
 
 const CHROME_EXTENSIONS_URL: &str = "chrome://extensions/";
@@ -1670,6 +1671,58 @@ pub async fn set_ffmpeg_enabled(
         settings.ffmpeg_enabled = enabled;
     })
     .await;
+    Ok(())
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct CreatePreviewSessionResponse {
+    pub token: String,
+}
+
+#[tauri::command]
+pub async fn create_preview_session(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    extra_headers: Option<String>,
+) -> Result<CreatePreviewSessionResponse, AppError> {
+    let trimmed_url = url.trim();
+    if trimmed_url.is_empty() {
+        return Err(AppError::InvalidInput("请输入下载地址".to_string()));
+    }
+    // Surface invalid Header format early using the existing parser.
+    parse_request_headers(extra_headers.as_deref())?;
+
+    let normalized_headers = extra_headers
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+
+    let token = preview::create_session(
+        &app_handle,
+        &state,
+        trimmed_url.to_string(),
+        normalized_headers,
+    )
+    .await?;
+    Ok(CreatePreviewSessionResponse { token })
+}
+
+#[tauri::command]
+pub async fn extract_preview_thumbnails(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    token: String,
+    count: usize,
+) -> Result<Vec<preview::PreviewThumbnail>, AppError> {
+    preview::extract_thumbnails(&app_handle, &state, &token, count).await
+}
+
+#[tauri::command]
+pub async fn close_preview_session(
+    state: State<'_, AppState>,
+    token: String,
+) -> Result<(), AppError> {
+    preview::close_session(&state, &token).await;
     Ok(())
 }
 

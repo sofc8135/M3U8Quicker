@@ -6,6 +6,7 @@ mod fix_path;
 mod models;
 mod persistence;
 mod playback;
+mod preview;
 mod remux;
 mod state;
 
@@ -160,6 +161,9 @@ pub fn run() {
             commands::download_ffmpeg,
             commands::set_ffmpeg_path,
             commands::set_ffmpeg_enabled,
+            commands::create_preview_session,
+            commands::extract_preview_thumbnails,
+            commands::close_preview_session,
             commands::open_download_playback_session,
             commands::prioritize_download_playback_position,
             commands::close_download_playback_session,
