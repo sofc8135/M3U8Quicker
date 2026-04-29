@@ -592,6 +592,7 @@ pub async fn extract_thumbnail_jpeg_cancellable(
     time_secs: f64,
     output_path: &Path,
     target_width: u32,
+    jpeg_quality: u8,
     cancel_token: &CancellationToken,
 ) -> Result<(), AppError> {
     let formatted_headers = format_ffmpeg_headers(extra_headers);
@@ -613,7 +614,7 @@ pub async fn extract_thumbnail_jpeg_cancellable(
         "-vf".to_string(),
         format!("scale={}:-2", target_width),
         "-q:v".to_string(),
-        "4".to_string(),
+        jpeg_quality.to_string(),
         output_path.to_string_lossy().into_owned(),
     ]);
 

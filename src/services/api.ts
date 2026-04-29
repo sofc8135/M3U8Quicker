@@ -152,6 +152,16 @@ export async function setPreviewColumns(previewColumns: number): Promise<void> {
   return invoke("set_preview_columns", { previewColumns });
 }
 
+export async function setPreviewThumbnailSettings(
+  previewThumbnailWidth: number,
+  previewJpegQuality: number
+): Promise<void> {
+  return invoke("set_preview_thumbnail_settings", {
+    previewThumbnailWidth,
+    previewJpegQuality,
+  });
+}
+
 export async function setDownloadOutputSettings(
   deleteTsTempDirAfterDownload: boolean,
   convertToMp4: boolean
@@ -309,11 +319,15 @@ export async function createPreviewSession(
 
 export async function extractPreviewThumbnails(
   token: string,
-  count: number
+  count: number,
+  targetWidth: number,
+  jpegQuality: number
 ): Promise<PreviewThumbnail[]> {
   return invoke<PreviewThumbnail[]>("extract_preview_thumbnails", {
     token,
     count,
+    targetWidth,
+    jpegQuality,
   });
 }
 

@@ -114,3 +114,12 @@ body,
 .toolbar-download-actions .ant-btn + .ant-btn::before {
   display: none !important;
 }
+
+.preview-count-select.ant-select-sm {
+  font-size: 12px;
+}
+
+.preview-count-select.ant-select-sm .ant-select-selection-item {
+  font-size: 12px;
+  font-weight: 600;
+}

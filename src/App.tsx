@@ -22,6 +22,7 @@ import { Toolbar } from "./components/Toolbar";
 import { DownloadList } from "./components/DownloadList";
 import { NewDownloadModal } from "./components/NewDownloadModal";
 import { BatchDownloadModal } from "./components/BatchDownloadModal";
+import { VideoPreviewModal } from "./components/VideoPreviewModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { ToolsModal, type ToolAction } from "./components/ToolsModal";
 import { useDownloads } from "./hooks/useDownloads";
@@ -32,6 +33,8 @@ import {
   openFirefoxAddonsPage,
   openFileLocation,
   openDownloadPlaybackSession,
+  createPreviewSession,
+  closePreviewSession,
 } from "./services/api";
 import type {
   ChromiumBrowser,
@@ -104,6 +107,7 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
   const [downloadDraft, setDownloadDraft] = useState<DownloadDraft | null>(null);
   const [batchDownloadDraft, setBatchDownloadDraft] = useState<BatchDownloadDraft | null>(null);
   const [batchDownloadModalOpen, setBatchDownloadModalOpen] = useState(false);
+  const [videoPreviewModalOpen, setVideoPreviewModalOpen] = useState(false);
   const [chromiumInstallGuide, setChromiumInstallGuide] =
     useState<ChromiumInstallGuideState | null>(null);
   const [firefoxInstallGuide, setFirefoxInstallGuide] =
@@ -146,6 +150,15 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
           nonce: Date.now(),
         });
         setModalOpen(true);
+        return;
+      }
+
+      const previewDraft = parsePreviewDraft(deepLink);
+      if (previewDraft) {
+        void openPreviewWindowFromDeepLink(
+          previewDraft.url,
+          previewDraft.extraHeaders
+        );
         return;
       }
 
@@ -408,6 +421,7 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
             setBatchDownloadDraft(null);
             setBatchDownloadModalOpen(true);
           }}
+          onOpenVideoPreview={() => setVideoPreviewModalOpen(true)}
           onOpenTool={(tool) => {
             if (tool === "install-chrome-extension") {
               void handleInstallChromiumExtension("chrome");
@@ -483,6 +497,15 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
         }}
         onSubmit={async (paramsList) => {
           return addDownloadsBatch(paramsList);
+        }}
+      />
+      <VideoPreviewModal
+        open={videoPreviewModalOpen}
+        onClose={() => setVideoPreviewModalOpen(false)}
+        onOpenFfmpegSettings={() => {
+          setVideoPreviewModalOpen(false);
+          setSettingsInitialTab("ffmpeg");
+          setSettingsOpen(true);
         }}
       />
       <Modal
@@ -945,6 +968,79 @@ function parseDownloadDraft(deepLink: string): Omit<DownloadDraft, "nonce"> | nu
     console.debug("[m3u8quicker] failed to parse deep link", deepLink, error);
     return null;
   }
+}
+
+function parsePreviewDraft(
+  deepLink: string
+): { url: string; extraHeaders?: string } | null {
+  try {
+    const parsed = new URL(deepLink);
+    const action = (parsed.hostname || parsed.pathname.replace(/^\/+/, "")).toLowerCase();
+    if (action !== "preview") {
+      return null;
+    }
+
+    const url = (parsed.searchParams.get("url") || "").trim();
+    if (!url) {
+      return null;
+    }
+
+    const extraHeaders = parsed.searchParams.get("extra_headers")?.trim() || undefined;
+    return { url, extraHeaders };
+  } catch (error) {
+    console.debug("[m3u8quicker] failed to parse preview deep link", deepLink, error);
+    return null;
+  }
+}
+
+async function openPreviewWindowFromDeepLink(
+  url: string,
+  extraHeaders?: string
+): Promise<void> {
+  let token: string | null = null;
+  try {
+    const session = await createPreviewSession(url, extraHeaders);
+    token = session.token;
+    const previewUrl = `/?${new URLSearchParams({
+      view: "preview",
+      token: session.token,
+    }).toString()}`;
+
+    const previewWindow = new WebviewWindow(session.window_label, {
+      url: previewUrl,
+      title: "视频预览",
+      width: 960,
+      height: 720,
+      minWidth: 720,
+      minHeight: 480,
+      resizable: true,
+      center: true,
+    });
+
+    previewWindow.once("tauri://created", () => {
+      void previewWindow.setFocus();
+    });
+    previewWindow.once("tauri://error", (event) => {
+      console.error("Failed to create preview window", event);
+      if (token) {
+        void closePreviewSession(token);
+      }
+      message.error("打开预览窗口失败");
+    });
+  } catch (error) {
+    if (token) {
+      void closePreviewSession(token);
+    }
+    console.error("[m3u8quicker] failed to open preview window", error);
+    message.error(`生成预览失败: ${formatPreviewError(error)}`);
+  }
+}
+
+function formatPreviewError(error: unknown): string {
+  if (!error) return "未知错误";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
 
 function parseBatchDownloadDraft(

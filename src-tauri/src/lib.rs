@@ -100,6 +100,15 @@ pub fn run() {
                     *preview_columns = settings.preview_columns;
                 }
                 {
+                    let mut preview_thumbnail_width =
+                        state.preview_thumbnail_width.lock().await;
+                    *preview_thumbnail_width = settings.preview_thumbnail_width;
+                }
+                {
+                    let mut preview_jpeg_quality = state.preview_jpeg_quality.lock().await;
+                    *preview_jpeg_quality = settings.preview_jpeg_quality;
+                }
+                {
                     let mut delete_ts_temp_dir_after_download =
                         state.delete_ts_temp_dir_after_download.lock().await;
                     *delete_ts_temp_dir_after_download = settings.delete_ts_temp_dir_after_download;
@@ -167,6 +176,7 @@ pub fn run() {
             commands::set_download_concurrency,
             commands::set_download_speed_limit,
             commands::set_preview_columns,
+            commands::set_preview_thumbnail_settings,
             commands::set_download_output_settings,
             commands::open_file_location,
             commands::open_url,

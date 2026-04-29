@@ -8,6 +8,7 @@
   const ROOT_HOST_ID = "m3u8quicker-root-host";
   const APP_DEEP_LINK_BASE_URL = "m3u8quicker://new-task";
   const APP_BATCH_DEEP_LINK_BASE_URL = "m3u8quicker://batch-download";
+  const APP_PREVIEW_DEEP_LINK_BASE_URL = "m3u8quicker://preview";
   const CHECK_PATTERN = /(png|image|ts|jpg|mp4|jpeg|EXTINF)/i;
   const M3U8_PATTERN = /\.m3u8(?:$|[?#])/i;
   const DIRECT_VIDEO_PATTERN = /\.(mp4|mkv|avi|wmv|flv|webm|mov|rmvb)(?:$|[?#])/i;
@@ -497,7 +498,7 @@
     };
 
     const selectAllButton = createTextActionButton("全选");
-    const clearSelectionButton = createTextActionButton("清空");
+    const clearSelectionButton = createTextActionButton("不选");
 
     const batchButton = document.createElement("button");
     batchButton.type = "button";
@@ -657,9 +658,25 @@
 
       content.appendChild(name);
 
+      const previewButton = document.createElement("button");
+      previewButton.type = "button";
+      previewButton.textContent = "预览";
+      previewButton.style.border = "none";
+      previewButton.style.background = "transparent";
+      previewButton.style.color = "#1155cc";
+      previewButton.style.fontSize = "12px";
+      previewButton.style.cursor = "pointer";
+      previewButton.style.padding = "2px 4px";
+      previewButton.style.flex = "0 0 auto";
+      previewButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openPreview(item.url);
+        panel.remove();
+      });
+
       const copyButton = document.createElement("button");
       copyButton.type = "button";
-      copyButton.textContent = "复制地址";
+      copyButton.textContent = "复制";
       copyButton.style.border = "none";
       copyButton.style.background = "transparent";
       copyButton.style.color = "#1155cc";
@@ -677,10 +694,35 @@
         }, 1200);
       });
 
+      const downloadButton = document.createElement("button");
+      downloadButton.type = "button";
+      downloadButton.textContent = "下载";
+      downloadButton.style.border = "none";
+      downloadButton.style.background = "transparent";
+      downloadButton.style.color = "#1155cc";
+      downloadButton.style.fontSize = "12px";
+      downloadButton.style.cursor = "pointer";
+      downloadButton.style.padding = "2px 4px";
+      downloadButton.style.flex = "0 0 auto";
+      downloadButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        openDownloader(item.url, item.fileType || "hls");
+        panel.remove();
+      });
+
+      const actions = document.createElement("div");
+      actions.style.display = "flex";
+      actions.style.alignItems = "center";
+      actions.style.gap = "2px";
+      actions.style.flex = "0 0 auto";
+      actions.appendChild(copyButton);
+      actions.appendChild(previewButton);
+      actions.appendChild(downloadButton);
+
       entry.appendChild(checkbox);
       entry.appendChild(thumb);
       entry.appendChild(content);
-      entry.appendChild(copyButton);
+      entry.appendChild(actions);
       panel.appendChild(entry);
     });
 
@@ -705,6 +747,20 @@
 
     const url = `${APP_DEEP_LINK_BASE_URL}?${params.toString()}`;
     window.location.href = url;
+  }
+
+  function openPreview(target) {
+    if (!target) {
+      return;
+    }
+    const params = new URLSearchParams({
+      url: target,
+    });
+    const extraHeaders = buildExtraHeaders();
+    if (extraHeaders) {
+      params.set("extra_headers", extraHeaders);
+    }
+    window.location.href = `${APP_PREVIEW_DEEP_LINK_BASE_URL}?${params.toString()}`;
   }
 
   function openBatchDownloader(items) {

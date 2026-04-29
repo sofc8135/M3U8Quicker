@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Modal, Form, Input, Button, Space, Radio, Typography, message } from "antd";
-import { EyeOutlined, FolderOpenOutlined } from "@ant-design/icons";
+import { FolderOpenOutlined, PictureOutlined } from "@ant-design/icons";
 import { open } from "@tauri-apps/plugin-dialog";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
@@ -304,7 +304,7 @@ export function NewDownloadModal({
       const previewWindow = new WebviewWindow(label, {
         url: previewUrl,
         title: "视频预览",
-        width: 1080,
+        width: 960,
         height: 720,
         minWidth: 720,
         minHeight: 480,
@@ -421,7 +421,7 @@ export function NewDownloadModal({
             <Button
               color="cyan"
               variant="solid"
-              icon={<EyeOutlined />}
+              icon={<PictureOutlined />}
               onClick={handlePreview}
               loading={previewing}
             >

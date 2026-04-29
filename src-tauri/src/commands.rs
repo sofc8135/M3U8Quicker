@@ -908,6 +908,8 @@ pub async fn get_app_settings(state: State<'_, AppState>) -> Result<AppSettings,
         download_concurrency: *state.max_concurrent_segments.lock().await,
         download_speed_limit_kbps: state.download_rate_limiter.limit_kbps().await,
         preview_columns: *state.preview_columns.lock().await,
+        preview_thumbnail_width: *state.preview_thumbnail_width.lock().await,
+        preview_jpeg_quality: *state.preview_jpeg_quality.lock().await,
         delete_ts_temp_dir_after_download: *state.delete_ts_temp_dir_after_download.lock().await,
         convert_to_mp4: *state.convert_to_mp4.lock().await,
         ffmpeg_enabled: *state.ffmpeg_enabled.lock().await,
@@ -1029,6 +1031,48 @@ pub async fn set_preview_columns(
 
     persistence::update_settings(&app_handle, |settings| {
         settings.preview_columns = normalized_columns;
+    })
+    .await;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_preview_thumbnail_settings(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    preview_thumbnail_width: u32,
+    preview_jpeg_quality: u8,
+) -> Result<(), AppError> {
+    if !(MIN_PREVIEW_THUMBNAIL_WIDTH..=MAX_PREVIEW_THUMBNAIL_WIDTH)
+        .contains(&preview_thumbnail_width)
+    {
+        return Err(AppError::InvalidInput(format!(
+            "预览图宽度必须在 {} 到 {} 之间",
+            MIN_PREVIEW_THUMBNAIL_WIDTH, MAX_PREVIEW_THUMBNAIL_WIDTH
+        )));
+    }
+    if !(MIN_PREVIEW_JPEG_QUALITY..=MAX_PREVIEW_JPEG_QUALITY).contains(&preview_jpeg_quality) {
+        return Err(AppError::InvalidInput(format!(
+            "图片质量参数必须在 {} 到 {} 之间",
+            MIN_PREVIEW_JPEG_QUALITY, MAX_PREVIEW_JPEG_QUALITY
+        )));
+    }
+
+    let normalized_width = normalize_preview_thumbnail_width(preview_thumbnail_width);
+    let normalized_quality = normalize_preview_jpeg_quality(preview_jpeg_quality);
+    {
+        let mut width = state.preview_thumbnail_width.lock().await;
+        *width = normalized_width;
+    }
+    {
+        let mut quality = state.preview_jpeg_quality.lock().await;
+        *quality = normalized_quality;
+    }
+
+    persistence::update_settings(&app_handle, |settings| {
+        settings.preview_thumbnail_width = normalized_width;
+        settings.preview_jpeg_quality = normalized_quality;
     })
     .await;
 
@@ -1745,8 +1789,18 @@ pub async fn extract_preview_thumbnails(
     state: State<'_, AppState>,
     token: String,
     count: usize,
+    target_width: u32,
+    jpeg_quality: u8,
 ) -> Result<Vec<preview::PreviewThumbnail>, AppError> {
-    preview::extract_thumbnails(&app_handle, &state, &token, count).await
+    preview::extract_thumbnails(
+        &app_handle,
+        &state,
+        &token,
+        count,
+        target_width,
+        jpeg_quality,
+    )
+    .await
 }
 
 #[tauri::command]

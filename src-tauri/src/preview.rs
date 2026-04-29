@@ -12,11 +12,14 @@ use crate::error::AppError;
 use crate::ffmpeg;
 use crate::state::AppState;
 
-const PREVIEW_THUMBNAIL_WIDTH: u32 = 320;
 const PREVIEW_THUMBNAIL_CONCURRENCY: usize = 3;
 const PREVIEW_WINDOW_LABEL_PREFIX: &str = "preview-";
 pub const MIN_THUMBNAIL_COUNT: usize = 9;
 pub const MAX_THUMBNAIL_COUNT: usize = 99;
+pub const MIN_THUMBNAIL_WIDTH: u32 = 320;
+pub const MAX_THUMBNAIL_WIDTH: u32 = 1920;
+pub const MIN_JPEG_QUALITY: u8 = 2;
+pub const MAX_JPEG_QUALITY: u8 = 10;
 
 #[derive(Debug)]
 pub struct PreviewSession {
@@ -39,6 +42,8 @@ pub struct PreviewThumbnail {
 pub struct PreviewThumbnailEvent {
     pub token: String,
     pub count: usize,
+    pub target_width: u32,
+    pub jpeg_quality: u8,
     pub thumbnail: PreviewThumbnail,
 }
 
@@ -71,11 +76,25 @@ pub async fn extract_thumbnails(
     state: &AppState,
     token: &str,
     count: usize,
+    target_width: u32,
+    jpeg_quality: u8,
 ) -> Result<Vec<PreviewThumbnail>, AppError> {
     if !(MIN_THUMBNAIL_COUNT..=MAX_THUMBNAIL_COUNT).contains(&count) {
         return Err(AppError::InvalidInput(format!(
             "缩略图数量必须在 {}~{} 之间",
             MIN_THUMBNAIL_COUNT, MAX_THUMBNAIL_COUNT
+        )));
+    }
+    if !(MIN_THUMBNAIL_WIDTH..=MAX_THUMBNAIL_WIDTH).contains(&target_width) {
+        return Err(AppError::InvalidInput(format!(
+            "预览图宽度必须在 {}~{} 之间",
+            MIN_THUMBNAIL_WIDTH, MAX_THUMBNAIL_WIDTH
+        )));
+    }
+    if !(MIN_JPEG_QUALITY..=MAX_JPEG_QUALITY).contains(&jpeg_quality) {
+        return Err(AppError::InvalidInput(format!(
+            "图片质量参数必须在 {}~{} 之间",
+            MIN_JPEG_QUALITY, MAX_JPEG_QUALITY
         )));
     }
 
@@ -118,7 +137,8 @@ pub async fn extract_thumbnails(
         }
     };
 
-    let thumbnail_dir = thumbnail_dir_for_count(&session.cache_dir, count);
+    let thumbnail_dir =
+        thumbnail_dir_for_options(&session.cache_dir, count, target_width, jpeg_quality);
     tokio::fs::create_dir_all(&thumbnail_dir).await?;
 
     let results = stream::iter(0..count)
@@ -135,7 +155,13 @@ pub async fn extract_thumbnails(
                 }
 
                 let time = duration_secs * (index as f64 + 0.5) / (count as f64);
-                let output_path = thumbnail_path_for_count(&session.cache_dir, count, index);
+                let output_path = thumbnail_path_for_options(
+                    &session.cache_dir,
+                    count,
+                    target_width,
+                    jpeg_quality,
+                    index,
+                );
                 if !tokio::fs::try_exists(&output_path).await.unwrap_or(false) {
                     ffmpeg::extract_thumbnail_jpeg_cancellable(
                         &ffmpeg_path,
@@ -143,7 +169,8 @@ pub async fn extract_thumbnails(
                         session.extra_headers.as_deref(),
                         time,
                         &output_path,
-                        PREVIEW_THUMBNAIL_WIDTH,
+                        target_width,
+                        jpeg_quality,
                         &cancel_token,
                     )
                     .await?;
@@ -159,6 +186,8 @@ pub async fn extract_thumbnails(
                     PreviewThumbnailEvent {
                         token,
                         count,
+                        target_width,
+                        jpeg_quality,
                         thumbnail: thumbnail.clone(),
                     },
                 );
@@ -205,12 +234,27 @@ fn preview_root_dir(app_handle: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(cache_dir.join("preview"))
 }
 
-fn thumbnail_path_for_count(cache_dir: &std::path::Path, count: usize, index: usize) -> PathBuf {
-    thumbnail_dir_for_count(cache_dir, count).join(format!("{:03}.jpg", index))
+fn thumbnail_path_for_options(
+    cache_dir: &std::path::Path,
+    count: usize,
+    target_width: u32,
+    jpeg_quality: u8,
+    index: usize,
+) -> PathBuf {
+    thumbnail_dir_for_options(cache_dir, count, target_width, jpeg_quality)
+        .join(format!("{:03}.jpg", index))
 }
 
-fn thumbnail_dir_for_count(cache_dir: &std::path::Path, count: usize) -> PathBuf {
-    cache_dir.join(format!("count_{:03}", count))
+fn thumbnail_dir_for_options(
+    cache_dir: &std::path::Path,
+    count: usize,
+    target_width: u32,
+    jpeg_quality: u8,
+) -> PathBuf {
+    cache_dir.join(format!(
+        "count_{:03}_w_{:04}_q_{:02}",
+        count, target_width, jpeg_quality
+    ))
 }
 
 #[cfg(test)]
@@ -232,12 +276,12 @@ mod tests {
         let cache_dir = PathBuf::from("preview-session");
 
         assert_eq!(
-            thumbnail_path_for_count(&cache_dir, 9, 0),
-            cache_dir.join("count_009").join("000.jpg")
+            thumbnail_path_for_options(&cache_dir, 9, 320, 4, 0),
+            cache_dir.join("count_009_w_0320_q_04").join("000.jpg")
         );
         assert_eq!(
-            thumbnail_path_for_count(&cache_dir, 18, 0),
-            cache_dir.join("count_018").join("000.jpg")
+            thumbnail_path_for_options(&cache_dir, 18, 1280, 2, 0),
+            cache_dir.join("count_018_w_1280_q_02").join("000.jpg")
         );
     }
 }

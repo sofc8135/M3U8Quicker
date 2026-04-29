@@ -10,6 +10,7 @@ import {
   GlobalOutlined,
   MergeCellsOutlined,
   DownOutlined,
+  PictureOutlined,
   PlusOutlined,
   SettingOutlined,
   SwapOutlined,
@@ -24,6 +25,7 @@ import { FirefoxIcon } from "./FirefoxIcon";
 interface ToolbarProps {
   onNewDownload: () => void;
   onOpenBatchDownload: () => void;
+  onOpenVideoPreview: () => void;
   onOpenTool: (tool: ToolAction) => void;
   onOpenSettings: () => void;
 }
@@ -31,6 +33,7 @@ interface ToolbarProps {
 export function Toolbar({
   onNewDownload,
   onOpenBatchDownload,
+  onOpenVideoPreview,
   onOpenTool,
   onOpenSettings,
 }: ToolbarProps) {
@@ -40,6 +43,11 @@ export function Toolbar({
       key: "batch-download",
       label: "批量下载",
       icon: <PlusSquareOutlined />,
+    },
+    {
+      key: "video-preview",
+      label: "视频预览图",
+      icon: <PictureOutlined />,
     },
   ];
   const toolItems: MenuProps["items"] = [
@@ -136,6 +144,8 @@ export function Toolbar({
             onClick: ({ key }) => {
               if (key === "batch-download") {
                 onOpenBatchDownload();
+              } else if (key === "video-preview") {
+                onOpenVideoPreview();
               }
             },
           }}

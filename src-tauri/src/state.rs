@@ -6,7 +6,8 @@ use tokio_util::sync::CancellationToken;
 use crate::downloader;
 use crate::models::{
     DownloadId, DownloadTask, ProxySettings, DEFAULT_DOWNLOAD_CONCURRENCY,
-    DEFAULT_DOWNLOAD_SPEED_LIMIT_KBPS, DEFAULT_PREVIEW_COLUMNS,
+    DEFAULT_DOWNLOAD_SPEED_LIMIT_KBPS, DEFAULT_PREVIEW_COLUMNS, DEFAULT_PREVIEW_JPEG_QUALITY,
+    DEFAULT_PREVIEW_THUMBNAIL_WIDTH,
 };
 use crate::playback::{DownloadPriorityState, PlaybackServerState, PlaybackSession};
 use crate::preview::PreviewSession;
@@ -21,6 +22,8 @@ pub struct AppState {
     pub max_concurrent_segments: Arc<Mutex<usize>>,
     pub download_rate_limiter: Arc<downloader::DownloadRateLimiter>,
     pub preview_columns: Arc<Mutex<usize>>,
+    pub preview_thumbnail_width: Arc<Mutex<u32>>,
+    pub preview_jpeg_quality: Arc<Mutex<u8>>,
     pub delete_ts_temp_dir_after_download: Arc<Mutex<bool>>,
     pub convert_to_mp4: Arc<Mutex<bool>>,
     pub ffmpeg_enabled: Arc<Mutex<bool>>,
@@ -47,6 +50,8 @@ impl AppState {
                 DEFAULT_DOWNLOAD_SPEED_LIMIT_KBPS,
             )),
             preview_columns: Arc::new(Mutex::new(DEFAULT_PREVIEW_COLUMNS)),
+            preview_thumbnail_width: Arc::new(Mutex::new(DEFAULT_PREVIEW_THUMBNAIL_WIDTH)),
+            preview_jpeg_quality: Arc::new(Mutex::new(DEFAULT_PREVIEW_JPEG_QUALITY)),
             delete_ts_temp_dir_after_download: Arc::new(Mutex::new(true)),
             convert_to_mp4: Arc::new(Mutex::new(true)),
             ffmpeg_enabled: Arc::new(Mutex::new(true)),

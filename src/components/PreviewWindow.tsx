@@ -1,7 +1,17 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { Alert, Empty, Space, Spin, Tag, Tooltip, Typography } from "antd";
+import {
+  cloneElement,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { Alert, Empty, Image, Select, Space, Spin, Tag, Tooltip, Typography, message } from "antd";
+import { save } from "@tauri-apps/plugin-dialog";
 import {
   AppstoreOutlined,
+  DownloadOutlined,
   MinusOutlined,
   PictureOutlined,
   PlusOutlined,
@@ -12,6 +22,7 @@ import {
   extractPreviewThumbnails,
   getAppSettings,
   setPreviewColumns,
+  setPreviewThumbnailSettings,
   type PreviewThumbnail,
 } from "../services/api";
 
@@ -21,14 +32,37 @@ const STEP = 9;
 const DEFAULT_COLUMNS = 3;
 const MIN_COLUMNS = 1;
 const MAX_COLUMNS = 12;
+const DEFAULT_THUMBNAIL_WIDTH = 320;
+const DEFAULT_JPEG_QUALITY = 4;
 
-const STEPPER_HEIGHT = 36;
+const WIDTH_OPTIONS = [
+  { value: 320, label: "320 px" },
+  { value: 640, label: "640 px" },
+  { value: 960, label: "960 px" },
+  { value: 1280, label: "1280 px" },
+  { value: 1920, label: "1920 px" },
+];
+
+const QUALITY_OPTIONS = [
+  { value: 2, label: "高" },
+  { value: 4, label: "标准" },
+  { value: 6, label: "较小" },
+  { value: 8, label: "小" },
+  { value: 10, label: "最小" },
+];
+
+type DirectoryPickerWindow = Window &
+  typeof globalThis & {
+    showDirectoryPicker?: () => Promise<FileSystemDirectoryHandle>;
+  };
+
+const STEPPER_HEIGHT = 30;
 
 const stepperWrapperStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "stretch",
   height: STEPPER_HEIGHT,
-  borderRadius: 10,
+  borderRadius: 8,
   overflow: "hidden",
   border: "1px solid var(--ant-color-border-secondary, #e5e7eb)",
   background: "var(--ant-color-bg-container, #ffffff)",
@@ -36,7 +70,7 @@ const stepperWrapperStyle: CSSProperties = {
 };
 
 const stepperButtonStyle: CSSProperties = {
-  width: 36,
+  width: 30,
   height: "100%",
   padding: 0,
   border: 0,
@@ -46,7 +80,7 @@ const stepperButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: 13,
+  fontSize: 12,
   transition: "background 0.15s ease, color 0.15s ease",
 };
 
@@ -57,16 +91,16 @@ const stepperButtonDisabledStyle: CSSProperties = {
 };
 
 const stepperLabelStyle: CSSProperties = {
-  minWidth: 104,
-  padding: "0 14px",
+  minWidth: 80,
+  padding: "0 8px",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: 6,
+  gap: 5,
   borderLeft: "1px solid var(--ant-color-border-secondary, #f0f0f0)",
   borderRight: "1px solid var(--ant-color-border-secondary, #f0f0f0)",
   background: "var(--ant-color-fill-quaternary, rgba(0,0,0,0.02))",
-  fontSize: 13,
+  fontSize: 12,
   whiteSpace: "nowrap",
   color: "var(--ant-color-text, rgba(0,0,0,0.88))",
 };
@@ -74,6 +108,8 @@ const stepperLabelStyle: CSSProperties = {
 interface PreviewThumbnailEvent {
   token: string;
   count: number;
+  target_width: number;
+  jpeg_quality: number;
   thumbnail: PreviewThumbnail;
 }
 
@@ -84,10 +120,23 @@ export function PreviewWindow() {
   );
   const [count, setCount] = useState(MIN_COUNT);
   const [columns, setColumns] = useState(DEFAULT_COLUMNS);
+  const [thumbnailWidth, setThumbnailWidth] = useState(DEFAULT_THUMBNAIL_WIDTH);
+  const [jpegQuality, setJpegQuality] = useState(DEFAULT_JPEG_QUALITY);
   const [thumbnails, setThumbnails] = useState<PreviewThumbnail[]>([]);
   const [loadedKey, setLoadedKey] = useState<number | null>(null);
   const [errorText, setErrorText] = useState<string | null>(
     token ? null : "预览参数缺失，无法打开窗口。"
+  );
+  const countOptions = useMemo(
+    () =>
+      Array.from(
+        { length: Math.floor((MAX_COUNT - MIN_COUNT) / STEP) + 1 },
+        (_, index) => {
+          const value = MIN_COUNT + index * STEP;
+          return { value, label: `${value} 张` };
+        }
+      ),
+    []
   );
   const loading = Boolean(token) && loadedKey !== count;
 
@@ -98,7 +147,12 @@ export function PreviewWindow() {
 
     void listen<PreviewThumbnailEvent>("preview-thumbnail", (event) => {
       const payload = event.payload;
-      if (payload.token !== token || payload.count !== count) {
+      if (
+        payload.token !== token ||
+        payload.count !== count ||
+        payload.target_width !== thumbnailWidth ||
+        payload.jpeg_quality !== jpegQuality
+      ) {
         return;
       }
       setThumbnails((current) =>
@@ -110,7 +164,7 @@ export function PreviewWindow() {
         return [];
       }
       unlisten = fn;
-      return extractPreviewThumbnails(token, count);
+      return extractPreviewThumbnails(token, count, thumbnailWidth, jpegQuality);
     }).then((items) => {
       if (cancelled) return;
       setThumbnails(sortThumbnails(items));
@@ -126,7 +180,7 @@ export function PreviewWindow() {
       cancelled = true;
       unlisten?.();
     };
-  }, [token, count]);
+  }, [token, count, thumbnailWidth, jpegQuality]);
 
   useEffect(() => {
     let disposed = false;
@@ -134,6 +188,8 @@ export function PreviewWindow() {
       .then((settings) => {
         if (disposed) return;
         setColumns(clampColumns(settings.preview_columns));
+        setThumbnailWidth(clampThumbnailWidth(settings.preview_thumbnail_width));
+        setJpegQuality(clampJpegQuality(settings.preview_jpeg_quality));
       })
       .catch((error) => {
         console.debug("Failed to load preview columns setting", error);
@@ -157,6 +213,29 @@ export function PreviewWindow() {
   const handleIncrement = () => {
     resetPreviewState();
     setCount((current) => Math.min(MAX_COUNT, current + STEP));
+  };
+  const handleCountChange = (nextCount: number) => {
+    if (nextCount === count) return;
+    resetPreviewState();
+    setCount(clampCount(nextCount));
+  };
+  const handleThumbnailWidthChange = (nextWidth: number) => {
+    const normalizedWidth = clampThumbnailWidth(nextWidth);
+    if (normalizedWidth === thumbnailWidth) return;
+    resetPreviewState();
+    setThumbnailWidth(normalizedWidth);
+    void setPreviewThumbnailSettings(normalizedWidth, jpegQuality).catch((error) => {
+      console.debug("Failed to save preview thumbnail settings", error);
+    });
+  };
+  const handleJpegQualityChange = (nextQuality: number) => {
+    const normalizedQuality = clampJpegQuality(nextQuality);
+    if (normalizedQuality === jpegQuality) return;
+    resetPreviewState();
+    setJpegQuality(normalizedQuality);
+    void setPreviewThumbnailSettings(thumbnailWidth, normalizedQuality).catch((error) => {
+      console.debug("Failed to save preview thumbnail settings", error);
+    });
   };
   const handleColumnsDecrement = () => {
     updateColumns(columns - 1);
@@ -198,6 +277,28 @@ export function PreviewWindow() {
           <Tag color="blue" style={{ marginInlineEnd: 0 }}>当前 {count} 张</Tag>
         </Space>
         <Space size={10} wrap>
+          <CompactSelectControl
+            icon={<PictureOutlined style={{ color: "var(--ant-color-primary, #1677ff)" }} />}
+            label="宽度"
+            ariaLabel="选择预览图宽度"
+            disabled={loading}
+            value={thumbnailWidth}
+            options={WIDTH_OPTIONS}
+            selectWidth={92}
+            popupWidth={104}
+            onChange={handleThumbnailWidthChange}
+          />
+          <CompactSelectControl
+            icon={<PictureOutlined style={{ color: "var(--ant-color-primary, #1677ff)" }} />}
+            label="质量"
+            ariaLabel="选择预览图质量"
+            disabled={loading}
+            value={jpegQuality}
+            options={QUALITY_OPTIONS}
+            selectWidth={70}
+            popupWidth={90}
+            onChange={handleJpegQualityChange}
+          />
           <Stepper
             icon={<AppstoreOutlined style={{ color: "var(--ant-color-primary, #1677ff)" }} />}
             label={<>每行 <strong style={{ margin: "0 2px" }}>{columns}</strong> 张</>}
@@ -212,7 +313,23 @@ export function PreviewWindow() {
           />
           <Stepper
             icon={<PictureOutlined style={{ color: "var(--ant-color-primary, #1677ff)" }} />}
-            label={<>共 <strong style={{ margin: "0 2px" }}>{count}</strong> 张</>}
+            label={
+              <>
+                共
+                <Select
+                  aria-label="选择预览图数量"
+                  className="preview-count-select"
+                  disabled={loading}
+                  options={countOptions}
+                  popupMatchSelectWidth={92}
+                  size="small"
+                  value={count}
+                  variant="borderless"
+                  style={{ width: 76, margin: "0 -4px" }}
+                  onChange={handleCountChange}
+                />
+              </>
+            }
             onMinus={handleDecrement}
             onPlus={handleIncrement}
             minusDisabled={loading || count <= MIN_COUNT}
@@ -246,17 +363,24 @@ export function PreviewWindow() {
         ) : null}
         {thumbnails.length > 0 ? (
           <div style={{ position: "relative" }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                gap: 12,
+            <Image.PreviewGroup
+              preview={{
+                imageRender: renderLargePreviewImage,
+                actionsRender: renderPreviewActions,
               }}
             >
-              {thumbnails.map((thumb) => (
-                <ThumbnailCard key={thumb.index} thumb={thumb} />
-              ))}
-            </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+                  gap: 12,
+                }}
+              >
+                {thumbnails.map((thumb) => (
+                  <ThumbnailCard key={thumb.index} thumb={thumb} />
+                ))}
+              </div>
+            </Image.PreviewGroup>
           </div>
         ) : null}
       </div>
@@ -351,6 +475,51 @@ function Stepper({
   );
 }
 
+interface CompactSelectControlProps {
+  icon?: ReactNode;
+  label: string;
+  ariaLabel: string;
+  disabled?: boolean;
+  value: number;
+  options: { value: number; label: string }[];
+  selectWidth: number;
+  popupWidth: number;
+  onChange: (value: number) => void;
+}
+
+function CompactSelectControl({
+  icon,
+  label,
+  ariaLabel,
+  disabled,
+  value,
+  options,
+  selectWidth,
+  popupWidth,
+  onChange,
+}: CompactSelectControlProps) {
+  return (
+    <div style={stepperWrapperStyle}>
+      <div style={{ ...stepperLabelStyle, borderLeft: 0, borderRight: 0 }}>
+        {icon}
+        <span>{label}</span>
+        <Select
+          aria-label={ariaLabel}
+          className="preview-count-select"
+          disabled={disabled}
+          options={options}
+          popupMatchSelectWidth={popupWidth}
+          size="small"
+          value={value}
+          variant="borderless"
+          style={{ width: selectWidth, margin: "0 -4px" }}
+          onChange={onChange}
+        />
+      </div>
+    </div>
+  );
+}
+
 function ThumbnailCard({ thumb }: { thumb: PreviewThumbnail }) {
   return (
     <div
@@ -361,10 +530,17 @@ function ThumbnailCard({ thumb }: { thumb: PreviewThumbnail }) {
         boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
       }}
     >
-      <img
+      <Image
         src={convertFileSrc(thumb.path)}
         alt={`thumbnail-${thumb.index}`}
-        style={{ width: "100%", display: "block", aspectRatio: "16 / 9", objectFit: "cover" }}
+        wrapperStyle={{ width: "100%", display: "block" }}
+        style={{
+          width: "100%",
+          display: "block",
+          aspectRatio: "16 / 9",
+          objectFit: "cover",
+          cursor: "zoom-in",
+        }}
       />
       <div
         style={{
@@ -382,6 +558,100 @@ function ThumbnailCard({ thumb }: { thumb: PreviewThumbnail }) {
   );
 }
 
+function renderLargePreviewImage(originalNode: ReactElement) {
+  const imageNode = originalNode as ReactElement<{ style?: CSSProperties }>;
+  return cloneElement(imageNode, {
+    style: {
+      ...imageNode.props.style,
+      width: "min(88vw, 1280px)",
+      maxHeight: "82vh",
+      objectFit: "contain",
+    },
+  });
+}
+
+function renderPreviewActions(
+  originalNode: ReactElement,
+  info: { current: number; image: { url?: string } }
+) {
+  const actionsNode = originalNode as ReactElement<{
+    children?: ReactNode;
+    className?: string;
+  }>;
+  const rootClassName =
+    actionsNode.props.className?.split(" ").find(Boolean) ?? "ant-image-preview-actions";
+  const actionClassName = `${rootClassName}-action`;
+
+  return cloneElement(actionsNode, {
+    children: (
+      <>
+        {actionsNode.props.children}
+        <button
+          type="button"
+          className={actionClassName}
+          aria-label="download"
+          title="下载"
+          onClick={(event) => {
+            event.stopPropagation();
+            void downloadPreviewImage(info.image.url, info.current);
+          }}
+        >
+          <DownloadOutlined />
+        </button>
+      </>
+    ),
+  });
+}
+
+async function downloadPreviewImage(url: string | undefined, current: number) {
+  if (!url) return;
+  const filename = `preview-${String(current + 1).padStart(3, "0")}.jpg`;
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const savedPath = await savePreviewBlob(blob, filename);
+    if (savedPath) {
+      message.success(`已保存到 ${savedPath}`);
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return;
+    }
+    console.debug("Failed to download preview image", error);
+    message.error("保存图片失败");
+  }
+}
+
+async function savePreviewBlob(blob: Blob, filename: string) {
+  const directoryPickerWindow = window as DirectoryPickerWindow;
+  if (directoryPickerWindow.showDirectoryPicker) {
+    const directoryHandle = await directoryPickerWindow.showDirectoryPicker();
+    const fileHandle = await directoryHandle.getFileHandle(filename, {
+      create: true,
+    });
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return `${directoryHandle.name}/${filename}`;
+  }
+
+  const targetPath = await save({
+    defaultPath: filename,
+    filters: [{ name: "JPEG 图片", extensions: ["jpg", "jpeg"] }],
+  });
+  if (!targetPath) return null;
+
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = targetPath;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(objectUrl);
+  return targetPath;
+}
+
 function upsertThumbnail(
   thumbnails: PreviewThumbnail[],
   next: PreviewThumbnail
@@ -396,6 +666,22 @@ function sortThumbnails(thumbnails: PreviewThumbnail[]) {
 
 function clampColumns(columns: number) {
   return Math.min(MAX_COLUMNS, Math.max(MIN_COLUMNS, columns));
+}
+
+function clampCount(count: number) {
+  return Math.min(MAX_COUNT, Math.max(MIN_COUNT, count));
+}
+
+function clampThumbnailWidth(width: number) {
+  const optionValues = WIDTH_OPTIONS.map((option) => option.value);
+  if (optionValues.includes(width)) return width;
+  return DEFAULT_THUMBNAIL_WIDTH;
+}
+
+function clampJpegQuality(quality: number) {
+  const optionValues = QUALITY_OPTIONS.map((option) => option.value);
+  if (optionValues.includes(quality)) return quality;
+  return DEFAULT_JPEG_QUALITY;
 }
 
 function formatTimestamp(totalSeconds: number) {

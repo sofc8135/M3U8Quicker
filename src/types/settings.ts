@@ -13,6 +13,8 @@ export interface AppSettings {
   download_concurrency: number;
   download_speed_limit_kbps: number;
   preview_columns: number;
+  preview_thumbnail_width: number;
+  preview_jpeg_quality: number;
   delete_ts_temp_dir_after_download: boolean;
   convert_to_mp4: boolean;
   ffmpeg_enabled: boolean;
