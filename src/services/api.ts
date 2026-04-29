@@ -16,6 +16,7 @@ import type {
   MediaAnalysisResult,
 } from "../types";
 import type { AppSettings, FfmpegStatus, ProxySettings } from "../types/settings";
+import type { UpdateAsset, UpdateInfo } from "../types/update";
 
 export async function createDownload(
   params: CreateDownloadParams
@@ -333,4 +334,18 @@ export async function extractPreviewThumbnails(
 
 export async function closePreviewSession(token: string): Promise<void> {
   return invoke("close_preview_session", { token });
+}
+
+export async function checkForUpdate(): Promise<UpdateInfo> {
+  return invoke<UpdateInfo>("check_for_update");
+}
+
+export async function downloadUpdateInstaller(
+  asset: UpdateAsset
+): Promise<string> {
+  return invoke<string>("download_update_installer", { asset });
+}
+
+export async function openUpdateInstaller(path: string): Promise<void> {
+  return invoke("open_update_installer", { path });
 }

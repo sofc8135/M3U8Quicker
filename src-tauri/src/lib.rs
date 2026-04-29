@@ -9,6 +9,7 @@ mod playback;
 mod preview;
 mod remux;
 mod state;
+mod update;
 
 use std::collections::HashMap;
 use tauri::Manager;
@@ -202,6 +203,9 @@ pub fn run() {
             commands::open_download_playback_session,
             commands::prioritize_download_playback_position,
             commands::close_download_playback_session,
+            update::check_for_update,
+            update::download_update_installer,
+            update::open_update_installer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

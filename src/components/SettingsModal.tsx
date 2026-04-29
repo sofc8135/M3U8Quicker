@@ -11,7 +11,13 @@ import {
   Tabs,
   Typography,
   message,
+  theme,
 } from "antd";
+import {
+  GithubOutlined,
+  ReloadOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -33,6 +39,7 @@ import type {
   ProxySettings,
   ThemeMode,
 } from "../types/settings";
+import { UpdateModal } from "./UpdateModal";
 
 const MIN_DOWNLOAD_CONCURRENCY = 1;
 const MAX_DOWNLOAD_CONCURRENCY = 64;
@@ -88,7 +95,9 @@ export function SettingsModal({
   const [ffmpegCustomPath, setFfmpegCustomPath] = useState("");
   const [savingFfmpegEnabled, setSavingFfmpegEnabled] = useState(false);
   const [appVersion, setAppVersion] = useState("");
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
   const ffmpegUnlistenRef = useRef<UnlistenFn | null>(null);
+  const { token } = theme.useToken();
 
   useEffect(() => {
     if (!open) return;
@@ -432,11 +441,85 @@ export function SettingsModal({
             />
           </Space>
 
-          <Space direction="vertical" size={4} style={{ width: "100%" }}>
+          <Space direction="vertical" size={8} style={{ width: "100%" }}>
             <Typography.Text strong>关于</Typography.Text>
-            <Typography.Text type="secondary">
-              版本：{appVersion || "-"} 作者：<a href="#" onClick={(e) => { e.preventDefault(); openUrl("https://github.com/Liubsyy/M3U8Quicker"); }}>Liubsyy</a>
-            </Typography.Text>
+            <div
+              style={{
+                padding: "16px 18px",
+                borderRadius: 14,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                background: `linear-gradient(135deg, ${token.colorInfoBg} 0%, ${token.colorBgContainer} 100%)`,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Space size={12} align="center">
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 12,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      background: token.colorPrimary,
+                      color: token.colorWhite,
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    <ThunderboltOutlined style={{ fontSize: 20 }} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    <Typography.Text strong style={{ fontSize: 15 }}>
+                      M3U8 Quicker
+                    </Typography.Text>
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      v{appVersion || "-"}
+                    </Typography.Text>
+                  </div>
+                </Space>
+                <Button
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  onClick={() => setUpdateModalOpen(true)}
+                >
+                  检查更新
+                </Button>
+              </div>
+              <div
+                style={{
+                  marginTop: 12,
+                  paddingTop: 12,
+                  borderTop: `1px dashed ${token.colorBorderSecondary}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 8,
+                }}
+              >
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  作者
+                </Typography.Text>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openUrl("https://github.com/Liubsyy/M3U8Quicker");
+                  }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                >
+                  <GithubOutlined />
+                  Liubsyy
+                </a>
+              </div>
+            </div>
           </Space>
         </Space>
       ),
@@ -618,30 +701,36 @@ export function SettingsModal({
   ];
 
   return (
-    <Modal
-      title="设置"
-      open={open}
-      onCancel={onClose}
-      onOk={() => void handleConfirm()}
-      okText="确定"
-      cancelButtonProps={{ style: { display: "none" } }}
-      width={500}
-      confirmLoading={
-        loading ||
-        savingProxy ||
-        savingConcurrency ||
-        savingSpeedLimit ||
-        savingDownloadOutput ||
-        savingFfmpegEnabled
-      }
-    >
-      <Tabs
-        className="settings-modal-tabs"
-        activeKey={activeTab}
-        onChange={(key) => setActiveTab(key as "general" | "download" | "ffmpeg")}
-        items={settingsTabItems}
+    <>
+      <Modal
+        title="设置"
+        open={open}
+        onCancel={onClose}
+        onOk={() => void handleConfirm()}
+        okText="确定"
+        cancelButtonProps={{ style: { display: "none" } }}
+        width={500}
+        confirmLoading={
+          loading ||
+          savingProxy ||
+          savingConcurrency ||
+          savingSpeedLimit ||
+          savingDownloadOutput ||
+          savingFfmpegEnabled
+        }
+      >
+        <Tabs
+          className="settings-modal-tabs"
+          activeKey={activeTab}
+          onChange={(key) => setActiveTab(key as "general" | "download" | "ffmpeg")}
+          items={settingsTabItems}
+        />
+      </Modal>
+      <UpdateModal
+        open={updateModalOpen}
+        onClose={() => setUpdateModalOpen(false)}
       />
-    </Modal>
+    </>
   );
 }
 

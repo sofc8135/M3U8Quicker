@@ -2324,6 +2324,7 @@ dependencies = [
  "mp4",
  "open",
  "reqwest 0.12.28",
+ "semver",
  "serde",
  "serde_json",
  "strip-ansi-escapes",
