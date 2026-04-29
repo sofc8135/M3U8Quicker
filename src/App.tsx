@@ -35,6 +35,8 @@ import {
   openDownloadPlaybackSession,
   createPreviewSession,
   closePreviewSession,
+  getAppSettings,
+  getFfmpegStatus,
 } from "./services/api";
 import type {
   ChromiumBrowser,
@@ -139,10 +141,11 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
   const { token } = theme.useToken();
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let disposed = false;
-
     const openDraftFromDeepLink = (deepLink: string) => {
+      if (!shouldHandleDeepLink(deepLink)) {
+        return;
+      }
+
       const singleDraft = parseDownloadDraft(deepLink);
       if (singleDraft) {
         setDownloadDraft({
@@ -157,7 +160,11 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
       if (previewDraft) {
         void openPreviewWindowFromDeepLink(
           previewDraft.url,
-          previewDraft.extraHeaders
+          previewDraft.extraHeaders,
+          () => {
+            setSettingsInitialTab("ffmpeg");
+            setSettingsOpen(true);
+          }
         );
         return;
       }
@@ -174,30 +181,11 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
       setBatchDownloadModalOpen(true);
     };
 
-    const initDeepLink = async () => {
-      try {
-        const { getCurrent, onOpenUrl } = await import(
-          "@tauri-apps/plugin-deep-link"
-        );
-
-        const initialUrls = await getCurrent();
-        if (!disposed && initialUrls?.length) {
-          initialUrls.forEach(openDraftFromDeepLink);
-        }
-
-        unlisten = await onOpenUrl((urls) => {
-          urls.forEach(openDraftFromDeepLink);
-        });
-      } catch (error) {
-        console.debug("[m3u8quicker] deep link unavailable", error);
-      }
-    };
-
-    initDeepLink();
+    deepLinkHandlers.add(openDraftFromDeepLink);
+    void ensureDeepLinkInit();
 
     return () => {
-      disposed = true;
-      unlisten?.();
+      deepLinkHandlers.delete(openDraftFromDeepLink);
     };
   }, []);
 
@@ -947,6 +935,55 @@ function App({ themeMode, onThemeModeChange }: AppProps) {
   );
 }
 
+type DeepLinkHandler = (deepLink: string) => void;
+
+const deepLinkHandlers = new Set<DeepLinkHandler>();
+const recentlyHandledDeepLinks = new Map<string, number>();
+const DEEP_LINK_DEDUP_WINDOW_MS = 1500;
+let deepLinkInitPromise: Promise<void> | null = null;
+
+function shouldHandleDeepLink(deepLink: string): boolean {
+  const now = Date.now();
+  for (const [key, ts] of recentlyHandledDeepLinks) {
+    if (now - ts > DEEP_LINK_DEDUP_WINDOW_MS) {
+      recentlyHandledDeepLinks.delete(key);
+    }
+  }
+  const last = recentlyHandledDeepLinks.get(deepLink);
+  if (last !== undefined && now - last < DEEP_LINK_DEDUP_WINDOW_MS) {
+    return false;
+  }
+  recentlyHandledDeepLinks.set(deepLink, now);
+  return true;
+}
+
+function dispatchDeepLink(deepLink: string): void {
+  for (const handler of deepLinkHandlers) {
+    handler(deepLink);
+  }
+}
+
+function ensureDeepLinkInit(): Promise<void> {
+  if (deepLinkInitPromise) {
+    return deepLinkInitPromise;
+  }
+  deepLinkInitPromise = (async () => {
+    try {
+      const { getCurrent, onOpenUrl } = await import(
+        "@tauri-apps/plugin-deep-link"
+      );
+      await onOpenUrl((urls) => {
+        urls.forEach(dispatchDeepLink);
+      });
+      const initialUrls = await getCurrent();
+      initialUrls?.forEach(dispatchDeepLink);
+    } catch (error) {
+      console.debug("[m3u8quicker] deep link unavailable", error);
+    }
+  })();
+  return deepLinkInitPromise;
+}
+
 function parseDownloadDraft(deepLink: string): Omit<DownloadDraft, "nonce"> | null {
   try {
     const parsed = new URL(deepLink);
@@ -993,10 +1030,48 @@ function parsePreviewDraft(
   }
 }
 
+async function ensureFfmpegReadyForPreview(
+  onOpenFfmpegSettings: () => void
+): Promise<boolean> {
+  try {
+    const [settings, ffmpegStatus] = await Promise.all([
+      getAppSettings(),
+      getFfmpegStatus(),
+    ]);
+    if (settings.ffmpeg_enabled && ffmpegStatus.kind === "installed") {
+      return true;
+    }
+  } catch {
+    // fall through to prompt
+  }
+
+  return await new Promise<boolean>((resolve) => {
+    Modal.confirm({
+      title: "预览需要 FFmpeg",
+      content: (
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          视频预览需要 FFmpeg 抽帧，请先在设置中开启并配置 FFmpeg。
+        </Typography.Paragraph>
+      ),
+      okText: "前往设置",
+      cancelText: "取消",
+      onOk: () => {
+        onOpenFfmpegSettings();
+        resolve(false);
+      },
+      onCancel: () => resolve(false),
+    });
+  });
+}
+
 async function openPreviewWindowFromDeepLink(
   url: string,
-  extraHeaders?: string
+  extraHeaders: string | undefined,
+  onOpenFfmpegSettings: () => void
 ): Promise<void> {
+  if (!(await ensureFfmpegReadyForPreview(onOpenFfmpegSettings))) {
+    return;
+  }
   let token: string | null = null;
   try {
     const session = await createPreviewSession(url, extraHeaders);

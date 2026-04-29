@@ -449,15 +449,18 @@ pub async fn probe_media_duration_secs_cancellable(
     ffmpeg_path: &Path,
     input: &str,
     extra_headers: Option<&str>,
+    proxy: Option<&str>,
     cancel_token: &CancellationToken,
 ) -> Result<f64, AppError> {
     let formatted_headers = format_ffmpeg_headers(extra_headers);
+    let sanitized_proxy = sanitize_ffmpeg_proxy(proxy);
     let sibling_ffprobe = ffmpeg_path.with_file_name(ffprobe_binary_name());
 
     if let Ok(value) = run_ffprobe_duration_cancellable(
         sibling_ffprobe.as_os_str(),
         input,
         formatted_headers.as_deref(),
+        sanitized_proxy.as_deref(),
         cancel_token,
     )
     .await
@@ -471,6 +474,7 @@ pub async fn probe_media_duration_secs_cancellable(
         OsStr::new("ffprobe"),
         input,
         formatted_headers.as_deref(),
+        sanitized_proxy.as_deref(),
         cancel_token,
     )
     .await
@@ -484,6 +488,7 @@ pub async fn probe_media_duration_secs_cancellable(
         ffmpeg_path,
         input,
         formatted_headers.as_deref(),
+        sanitized_proxy.as_deref(),
         cancel_token,
     )
     .await
@@ -493,12 +498,16 @@ async fn run_ffprobe_duration_cancellable(
     ffprobe_command: &OsStr,
     input: &str,
     formatted_headers: Option<&str>,
+    proxy: Option<&str>,
     cancel_token: &CancellationToken,
 ) -> Result<f64, AppError> {
     let mut command = tokio::process::Command::new(ffprobe_command);
     configure_background_command(&mut command);
     if let Some(headers) = formatted_headers {
         command.args(["-headers", headers]);
+    }
+    if let Some(url) = proxy {
+        command.args(["-http_proxy", url]);
     }
     command
         .args([
@@ -538,12 +547,16 @@ async fn probe_duration_via_ffmpeg_cancellable(
     ffmpeg_path: &Path,
     input: &str,
     formatted_headers: Option<&str>,
+    proxy: Option<&str>,
     cancel_token: &CancellationToken,
 ) -> Result<f64, AppError> {
     let mut command = tokio::process::Command::new(ffmpeg_path);
     configure_background_command(&mut command);
     if let Some(headers) = formatted_headers {
         command.args(["-headers", headers]);
+    }
+    if let Some(url) = proxy {
+        command.args(["-http_proxy", url]);
     }
     command
         .args(["-hide_banner", "-i", input, "-f", "null", "-"])
@@ -589,6 +602,7 @@ pub async fn extract_thumbnail_jpeg_cancellable(
     ffmpeg_path: &Path,
     input: &str,
     extra_headers: Option<&str>,
+    proxy: Option<&str>,
     time_secs: f64,
     output_path: &Path,
     target_width: u32,
@@ -596,6 +610,7 @@ pub async fn extract_thumbnail_jpeg_cancellable(
     cancel_token: &CancellationToken,
 ) -> Result<(), AppError> {
     let formatted_headers = format_ffmpeg_headers(extra_headers);
+    let sanitized_proxy = sanitize_ffmpeg_proxy(proxy);
     let mut args: Vec<String> = vec![
         "-y".to_string(),
         "-hide_banner".to_string(),
@@ -605,6 +620,10 @@ pub async fn extract_thumbnail_jpeg_cancellable(
     if let Some(headers) = formatted_headers {
         args.push("-headers".to_string());
         args.push(headers);
+    }
+    if let Some(url) = sanitized_proxy {
+        args.push("-http_proxy".to_string());
+        args.push(url);
     }
     args.extend([
         "-i".to_string(),
@@ -619,6 +638,15 @@ pub async fn extract_thumbnail_jpeg_cancellable(
     ]);
 
     run_ffmpeg_command_cancellable(ffmpeg_path, &args, cancel_token).await
+}
+
+fn sanitize_ffmpeg_proxy(raw: Option<&str>) -> Option<String> {
+    let trimmed = raw?.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 fn format_ffmpeg_headers(raw: Option<&str>) -> Option<String> {

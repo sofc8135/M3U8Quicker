@@ -114,6 +114,14 @@ pub async fn extract_thumbnails(
         .await
         .ok_or_else(|| AppError::InvalidInput("请先在设置中开启并配置 FFmpeg".to_string()))?;
     let cancel_token = session.cancel_token.clone();
+    let proxy_url = {
+        let proxy = state.proxy_settings.lock().await;
+        if proxy.enabled && !proxy.url.trim().is_empty() {
+            Some(proxy.url.trim().to_string())
+        } else {
+            None
+        }
+    };
 
     let duration_secs = {
         let mut guard = session.duration_secs.lock().await;
@@ -124,6 +132,7 @@ pub async fn extract_thumbnails(
                 &ffmpeg_path,
                 &session.url,
                 session.extra_headers.as_deref(),
+                proxy_url.as_deref(),
                 &cancel_token,
             )
             .await?;
@@ -148,6 +157,7 @@ pub async fn extract_thumbnails(
             let ffmpeg_path = ffmpeg_path.clone();
             let session = Arc::clone(&session);
             let token = token.to_string();
+            let proxy_url = proxy_url.clone();
 
             async move {
                 if cancel_token.is_cancelled() {
@@ -167,6 +177,7 @@ pub async fn extract_thumbnails(
                         &ffmpeg_path,
                         &session.url,
                         session.extra_headers.as_deref(),
+                        proxy_url.as_deref(),
                         time,
                         &output_path,
                         target_width,
