@@ -521,6 +521,7 @@ function CompactSelectControl({
 }
 
 function ThumbnailCard({ thumb }: { thumb: PreviewThumbnail }) {
+  const [aspectRatio, setAspectRatio] = useState<string>("16 / 9");
   return (
     <div
       style={{
@@ -534,11 +535,18 @@ function ThumbnailCard({ thumb }: { thumb: PreviewThumbnail }) {
         src={convertFileSrc(thumb.path)}
         alt={`thumbnail-${thumb.index}`}
         wrapperStyle={{ width: "100%", display: "block" }}
+        onLoad={(event) => {
+          const target = event.currentTarget as HTMLImageElement;
+          if (target.naturalWidth > 0 && target.naturalHeight > 0) {
+            setAspectRatio(`${target.naturalWidth} / ${target.naturalHeight}`);
+          }
+        }}
         style={{
           width: "100%",
           display: "block",
-          aspectRatio: "16 / 9",
-          objectFit: "cover",
+          aspectRatio,
+          objectFit: "contain",
+          background: "#000",
           cursor: "zoom-in",
         }}
       />
