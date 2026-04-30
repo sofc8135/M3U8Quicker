@@ -34,7 +34,7 @@
 
 ### 安装
 
-可在 [GitHub Releases 最新版本](https://github.com/Liubsyy/M3U8Quicker/releases/latest) 页面下载对应的桌面安装包或发行文件，下方文件链接可直接下载：
+可在 [GitHub Releases](https://github.com/Liubsyy/M3U8Quicker/releases) 页面下载对应的桌面安装包或发行文件，下方文件链接可直接下载：
 
 | 系统 | 文件 | 说明 |
 | --- | --- | --- |
@@ -42,7 +42,7 @@
 | MacOS | Apple Silicon：[安装包](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_macos_aarch64.dmg) / [应用包压缩](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_macos_aarch64.app.tar.gz)<br>Intel：[安装包](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_macos_x64.dmg) / [应用包压缩](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_macos_x64.app.tar.gz) | M芯片选 Apple Silicon<br>Intel 芯片选 Intel |
 | Linux | 安装包：[deb](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_linux_amd64.deb) / [rpm](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_linux_x86_64.rpm)<br>免安装：[AppImage](https://github.com/Liubsyy/M3U8Quicker/releases/latest/download/M3U8.Quicker_1.0.7_linux_amd64.AppImage) | Ubuntu/Debian/Linux Mint选deb<br>Fedora/RHEL/CentOS Stream/openSUSE选rpm|
 
-macOS 首次安装时如果遇到“无法打开”或“应用已损坏”之类的权限提示，可按下面方式处理：
+MacOS 首次安装时如果遇到“无法打开”或“应用已损坏”之类的权限提示，可按下面方式处理：
 
 - 先在“系统设置 -> 隐私与安全性”中找到被拦截的应用，点击“仍要打开”
 - 或在 Finder 中对应用点右键，选择“打开”，再确认一次
