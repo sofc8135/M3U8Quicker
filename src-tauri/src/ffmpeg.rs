@@ -25,10 +25,29 @@ struct SubtitleCue {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct FfprobeInfo {
+    pub path: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FfmpegBinaryInfo {
+    pub path: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FfmpegStatus {
-    NotInstalled,
-    Installed { path: String, version: String },
+    NotInstalled {
+        ffmpeg: Option<FfmpegBinaryInfo>,
+        ffprobe: Option<FfprobeInfo>,
+    },
+    Installed {
+        path: String,
+        version: String,
+        ffprobe: FfprobeInfo,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -193,14 +212,95 @@ async fn probe_ffmpeg_version(path: &Path) -> Option<String> {
         })
 }
 
+/// Run a ffprobe binary with `-version` and return its parsed version string.
+async fn probe_ffprobe_version<S: AsRef<OsStr>>(command_path: S) -> Option<String> {
+    let mut command = tokio::process::Command::new(command_path.as_ref());
+    configure_background_command(&mut command);
+    let output = command
+        .arg("-version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Some(
+        stdout
+            .lines()
+            .next()
+            .and_then(|line| line.strip_prefix("ffprobe version "))
+            .map(|rest| {
+                rest.split_whitespace()
+                    .next()
+                    .unwrap_or("unknown")
+                    .to_string()
+            })
+            .unwrap_or_else(|| "unknown".to_string()),
+    )
+}
+
+/// Locate a working ffprobe: first try the sibling next to ffmpeg, then fall
+/// back to a `ffprobe` on PATH (mirrors the lookup order used by
+/// `probe_video_dimensions` / `run_ffprobe_json`).
+async fn detect_ffprobe_for(ffmpeg_path: &Path) -> Option<FfprobeInfo> {
+    let sibling = ffmpeg_path.with_file_name(ffprobe_binary_name());
+    if sibling.exists() {
+        if let Some(version) = probe_ffprobe_version(&sibling).await {
+            return Some(FfprobeInfo {
+                path: sibling.to_string_lossy().into_owned(),
+                version,
+            });
+        }
+    }
+
+    // PATH fallback — invoke bare `ffprobe` and resolve its location.
+    let version = probe_ffprobe_version(OsStr::new("ffprobe")).await?;
+
+    let which_cmd = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
+    let mut which_command = tokio::process::Command::new(which_cmd);
+    configure_background_command(&mut which_command);
+    let resolved = which_command
+        .arg("ffprobe")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .next()
+                .map(|s| s.trim().to_string())
+        })
+        .unwrap_or_else(|| "ffprobe".to_string());
+
+    Some(FfprobeInfo {
+        path: resolved,
+        version,
+    })
+}
+
 async fn detect_at_path(path: &Path) -> Option<FfmpegStatus> {
     if !path.exists() {
         return None;
     }
     let version = probe_ffmpeg_version(path).await?;
+    let ffprobe = detect_ffprobe_for(path).await?;
     Some(FfmpegStatus::Installed {
         path: path.to_string_lossy().into_owned(),
         version,
+        ffprobe,
     })
 }
 
@@ -257,10 +357,121 @@ async fn detect_system_ffmpeg() -> Option<FfmpegStatus> {
         })
         .unwrap_or_else(|| "ffmpeg".to_string());
 
+    let ffprobe = detect_ffprobe_for(Path::new(&resolved_path)).await?;
+
     Some(FfmpegStatus::Installed {
         path: resolved_path,
         version,
+        ffprobe,
     })
+}
+
+/// Locate ffmpeg alone across the candidate sources (custom → app data → PATH).
+/// Used purely for status display when the strict "both installed" gate fails.
+async fn detect_ffmpeg_only(app_handle: &AppHandle) -> Option<FfmpegBinaryInfo> {
+    let custom_path = app_handle
+        .state::<AppState>()
+        .ffmpeg_path
+        .lock()
+        .await
+        .clone();
+    if let Some(ref custom) = custom_path {
+        let path = Path::new(custom);
+        if path.exists() {
+            if let Some(version) = probe_ffmpeg_version(path).await {
+                return Some(FfmpegBinaryInfo {
+                    path: path.to_string_lossy().into_owned(),
+                    version,
+                });
+            }
+        }
+    }
+
+    let managed_path = ffmpeg_binary_path(app_handle);
+    if managed_path.exists() {
+        if let Some(version) = probe_ffmpeg_version(&managed_path).await {
+            return Some(FfmpegBinaryInfo {
+                path: managed_path.to_string_lossy().into_owned(),
+                version,
+            });
+        }
+    }
+
+    // PATH fallback
+    let mut command = tokio::process::Command::new("ffmpeg");
+    configure_background_command(&mut command);
+    let output = command
+        .arg("-version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let version = stdout
+        .lines()
+        .next()
+        .and_then(|line| line.strip_prefix("ffmpeg version "))
+        .map(|rest| {
+            rest.split_whitespace()
+                .next()
+                .unwrap_or("unknown")
+                .to_string()
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let which_cmd = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
+    let mut which_command = tokio::process::Command::new(which_cmd);
+    configure_background_command(&mut which_command);
+    let resolved_path = which_command
+        .arg("ffmpeg")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .ok()
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .next()
+                .map(|s| s.trim().to_string())
+        })
+        .unwrap_or_else(|| "ffmpeg".to_string());
+
+    Some(FfmpegBinaryInfo {
+        path: resolved_path,
+        version,
+    })
+}
+
+/// Locate ffprobe alone across the same candidate sources used for ffmpeg.
+async fn detect_ffprobe_only(app_handle: &AppHandle) -> Option<FfprobeInfo> {
+    let custom_path = app_handle
+        .state::<AppState>()
+        .ffmpeg_path
+        .lock()
+        .await
+        .clone();
+    if let Some(ref custom) = custom_path {
+        if let Some(info) = detect_ffprobe_for(Path::new(custom)).await {
+            return Some(info);
+        }
+    }
+    let managed_path = ffmpeg_binary_path(app_handle);
+    if let Some(info) = detect_ffprobe_for(&managed_path).await {
+        return Some(info);
+    }
+    // Bare PATH fallback (no ffmpeg sibling reference)
+    detect_ffprobe_for(Path::new("ffprobe")).await
 }
 
 /// Detect ffmpeg: 1) user custom path → 2) app data dir → 3) system PATH
@@ -290,14 +501,18 @@ pub async fn detect_ffmpeg(app_handle: &AppHandle) -> FfmpegStatus {
         return status;
     }
 
-    FfmpegStatus::NotInstalled
+    // Strict gate failed: report which side (if any) was found, for UI display.
+    FfmpegStatus::NotInstalled {
+        ffmpeg: detect_ffmpeg_only(app_handle).await,
+        ffprobe: detect_ffprobe_only(app_handle).await,
+    }
 }
 
 /// Resolve the ffmpeg binary path if available (for use by conversion fallback).
 pub async fn resolve_ffmpeg_path(app_handle: &AppHandle) -> Option<PathBuf> {
     match detect_ffmpeg(app_handle).await {
         FfmpegStatus::Installed { path, .. } => Some(PathBuf::from(path)),
-        FfmpegStatus::NotInstalled => None,
+        FfmpegStatus::NotInstalled { .. } => None,
     }
 }
 
@@ -432,6 +647,23 @@ pub async fn download_ffmpeg(app_handle: AppHandle) -> Result<PathBuf, AppError>
     .await
     .map_err(|e| AppError::Internal(format!("Download task join error: {}", e)))??;
 
+    // On macOS, ffmpeg-sidecar's package only contains ffmpeg (evermeet.cx ships
+    // ffmpeg/ffprobe as separate archives). Pull ffprobe down too so probing
+    // works without a system-wide install.
+    #[cfg(target_os = "macos")]
+    {
+        let dest_dir_for_probe = ffmpeg_dir(&app_handle);
+        let app_handle_probe = app_handle.clone();
+        if let Err(err) = tokio::task::spawn_blocking(move || {
+            download_macos_ffprobe(&dest_dir_for_probe, &app_handle_probe)
+        })
+        .await
+        .map_err(|e| AppError::Internal(format!("ffprobe download task join error: {}", e)))?
+        {
+            eprintln!("[ffmpeg] download ffprobe failed: {}", err);
+        }
+    }
+
     let _ = app_handle.emit(
         "ffmpeg-download-progress",
         &FfmpegDownloadProgress {
@@ -442,6 +674,128 @@ pub async fn download_ffmpeg(app_handle: AppHandle) -> Result<PathBuf, AppError>
     );
 
     Ok(final_path)
+}
+
+#[cfg(target_os = "macos")]
+fn download_macos_ffprobe(
+    dest_dir: &Path,
+    app_handle: &AppHandle,
+) -> Result<(), AppError> {
+    use std::io::{Read, Write};
+
+    // evermeet.cx serves Intel binaries; osxexperts.net publishes Apple
+    // Silicon builds. Match ffmpeg-sidecar's per-arch source choice so the
+    // ffprobe build is consistent with the ffmpeg we just installed.
+    #[cfg(target_arch = "x86_64")]
+    const FFPROBE_URL: &str = "https://evermeet.cx/ffmpeg/getrelease/ffprobe/zip";
+    #[cfg(target_arch = "aarch64")]
+    const FFPROBE_URL: &str = "https://www.osxexperts.net/ffprobe80arm.zip";
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    compile_error!("Unsupported macOS architecture for ffprobe download");
+
+    let _ = app_handle.emit(
+        "ffmpeg-download-progress",
+        &FfmpegDownloadProgress {
+            downloaded_bytes: 0,
+            total_bytes: 0,
+            stage: FfmpegDownloadStage::Downloading,
+        },
+    );
+
+    let response = reqwest::blocking::get(FFPROBE_URL)
+        .map_err(|e| AppError::Internal(format!("Failed to request ffprobe: {}", e)))?;
+    if !response.status().is_success() {
+        return Err(AppError::Internal(format!(
+            "ffprobe download HTTP {}",
+            response.status()
+        )));
+    }
+
+    let total_bytes = response.content_length().unwrap_or(0);
+    let mut downloaded_bytes: u64 = 0;
+    let mut reader = response;
+
+    let archive_path = dest_dir.join("ffprobe-download.zip");
+    {
+        let mut out = std::fs::File::create(&archive_path)
+            .map_err(|e| AppError::Internal(format!("Failed to create ffprobe archive: {}", e)))?;
+        let mut buf = [0u8; 64 * 1024];
+        loop {
+            let n = reader
+                .read(&mut buf)
+                .map_err(|e| AppError::Internal(format!("Failed reading ffprobe stream: {}", e)))?;
+            if n == 0 {
+                break;
+            }
+            out.write_all(&buf[..n])
+                .map_err(|e| AppError::Internal(format!("Failed writing ffprobe archive: {}", e)))?;
+            downloaded_bytes += n as u64;
+            let _ = app_handle.emit(
+                "ffmpeg-download-progress",
+                &FfmpegDownloadProgress {
+                    downloaded_bytes,
+                    total_bytes,
+                    stage: FfmpegDownloadStage::Downloading,
+                },
+            );
+        }
+    }
+
+    let _ = app_handle.emit(
+        "ffmpeg-download-progress",
+        &FfmpegDownloadProgress {
+            downloaded_bytes: 0,
+            total_bytes: 0,
+            stage: FfmpegDownloadStage::Unpacking,
+        },
+    );
+
+    let archive_file = std::fs::File::open(&archive_path)
+        .map_err(|e| AppError::Internal(format!("Failed to open ffprobe archive: {}", e)))?;
+    let mut archive = zip::ZipArchive::new(archive_file)
+        .map_err(|e| AppError::Internal(format!("Failed to read ffprobe zip: {}", e)))?;
+
+    let mut extracted = false;
+    for i in 0..archive.len() {
+        let mut entry = archive
+            .by_index(i)
+            .map_err(|e| AppError::Internal(format!("Failed to read zip entry: {}", e)))?;
+        if !entry.is_file() {
+            continue;
+        }
+        let name = entry
+            .enclosed_name()
+            .and_then(|p| p.file_name().map(|n| n.to_owned()))
+            .unwrap_or_default();
+        if name == "ffprobe" {
+            let out_path = dest_dir.join("ffprobe");
+            let mut out_file = std::fs::File::create(&out_path).map_err(|e| {
+                AppError::Internal(format!("Failed to create ffprobe binary: {}", e))
+            })?;
+            std::io::copy(&mut entry, &mut out_file)
+                .map_err(|e| AppError::Internal(format!("Failed to extract ffprobe: {}", e)))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(
+                    &out_path,
+                    std::fs::Permissions::from_mode(0o755),
+                );
+            }
+            extracted = true;
+            break;
+        }
+    }
+
+    let _ = std::fs::remove_file(&archive_path);
+
+    if !extracted {
+        return Err(AppError::Internal(
+            "ffprobe binary not found in archive".to_string(),
+        ));
+    }
+
+    Ok(())
 }
 
 /// Probe duration and stop the ffprobe/ffmpeg child promptly when cancelled.

@@ -21,9 +21,28 @@ export interface AppSettings {
   ffmpeg_path: string | null;
 }
 
+export interface FfprobeInfo {
+  path: string;
+  version: string;
+}
+
+export interface FfmpegBinaryInfo {
+  path: string;
+  version: string;
+}
+
 export type FfmpegStatus =
-  | { kind: "not_installed" }
-  | { kind: "installed"; path: string; version: string };
+  | {
+      kind: "not_installed";
+      ffmpeg: FfmpegBinaryInfo | null;
+      ffprobe: FfprobeInfo | null;
+    }
+  | {
+      kind: "installed";
+      path: string;
+      version: string;
+      ffprobe: FfprobeInfo;
+    };
 
 export interface FfmpegDownloadProgress {
   downloaded_bytes: number;

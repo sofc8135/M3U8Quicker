@@ -1,21 +1,33 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
+  Badge,
   Button,
+  Card,
   Input,
   InputNumber,
   Modal,
   Progress,
   Radio,
+  Segmented,
   Space,
   Switch,
   Tabs,
+  Tag,
   Typography,
   message,
   theme,
 } from "antd";
 import {
+  CheckCircleFilled,
+  CloseCircleFilled,
+  CloudDownloadOutlined,
+  DashboardOutlined,
+  FolderOpenOutlined,
   GithubOutlined,
+  InfoCircleOutlined,
   ReloadOutlined,
+  SettingOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -44,6 +56,23 @@ import { UpdateModal } from "./UpdateModal";
 const MIN_DOWNLOAD_CONCURRENCY = 1;
 const MAX_DOWNLOAD_CONCURRENCY = 64;
 const DEFAULT_LIMITED_DOWNLOAD_SPEED_KBPS = 1024;
+
+const SPEED_LIMIT_PRESETS: { label: string; value: number }[] = [
+  { label: "512 KB/s", value: 512 },
+  { label: "1 MB/s", value: 1024 },
+  { label: "2 MB/s", value: 2048 },
+  { label: "5 MB/s", value: 5120 },
+  { label: "10 MB/s", value: 10240 },
+];
+
+function formatSpeedKbps(kbps: number | null): string {
+  if (kbps === null || kbps <= 0) return "未设置";
+  if (kbps >= 1024) {
+    const mb = kbps / 1024;
+    return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} MB/s`;
+  }
+  return `${kbps} KB/s`;
+}
 
 type SpeedLimitMode = "unlimited" | "limited";
 
@@ -476,13 +505,26 @@ export function SettingsModal({
                   >
                     <ThunderboltOutlined style={{ fontSize: 20 }} />
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                     <Typography.Text strong style={{ fontSize: 15 }}>
                       M3U8 Quicker
                     </Typography.Text>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      v{appVersion || "-"}
-                    </Typography.Text>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        v{appVersion || "-"}
+                      </Typography.Text>
+                      <a
+                        href="#"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          openUrl("https://github.com/Liubsyy/M3U8Quicker");
+                        }}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12 }}
+                      >
+                        <GithubOutlined />
+                        Liubsyy
+                      </a>
+                    </div>
                   </div>
                 </Space>
                 <Button
@@ -492,32 +534,6 @@ export function SettingsModal({
                 >
                   检查更新
                 </Button>
-              </div>
-              <div
-                style={{
-                  marginTop: 12,
-                  paddingTop: 12,
-                  borderTop: `1px dashed ${token.colorBorderSecondary}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 8,
-                }}
-              >
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  作者
-                </Typography.Text>
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    openUrl("https://github.com/Liubsyy/M3U8Quicker");
-                  }}
-                  style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                >
-                  <GithubOutlined />
-                  Liubsyy
-                </a>
               </div>
             </div>
           </Space>
@@ -554,39 +570,116 @@ export function SettingsModal({
             />
           </Space>
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Typography.Text strong>下载限速</Typography.Text>
-            <div>
-              <Radio.Group
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <Typography.Text strong>下载限速</Typography.Text>
+              <Tag
+                bordered={false}
+                color={speedLimitMode === "unlimited" ? "success" : "processing"}
+                style={{ marginInlineEnd: 0, fontWeight: 500 }}
+              >
+                {speedLimitMode === "unlimited"
+                  ? "全速下载"
+                  : `≤ ${formatSpeedKbps(downloadSpeedLimitKbps)}`}
+              </Tag>
+            </div>
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 12,
+                border: `1px solid ${token.colorBorderSecondary}`,
+                background: token.colorFillQuaternary,
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <Segmented
+                block
                 value={speedLimitMode}
                 disabled={loading || savingSpeedLimit}
-                style={{ display: "block", marginBottom: 6 }}
-                onChange={(event) =>
-                  void updateSpeedLimitMode(event.target.value as SpeedLimitMode)
-                }
-              >
-                <Radio.Button value="unlimited">不限速</Radio.Button>
-                <Radio.Button value="limited">限速</Radio.Button>
-              </Radio.Group>
-              <InputNumber
-                min={1}
-                precision={0}
-                addonAfter="KB/s"
-                value={downloadSpeedLimitKbps ?? undefined}
-                style={{ width: "100%" }}
-                disabled={
-                  loading || savingSpeedLimit || speedLimitMode === "unlimited"
-                }
-                placeholder="请输入下载限速"
                 onChange={(value) =>
-                  setDownloadSpeedLimitKbps(
-                    typeof value === "number" ? value : null
-                  )
+                  void updateSpeedLimitMode(value as SpeedLimitMode)
                 }
-                onBlur={() => {
-                  if (speedLimitMode !== "limited") return;
-                  void saveDownloadSpeedLimitValue(downloadSpeedLimitKbps);
-                }}
+                options={[
+                  {
+                    label: (
+                      <Space size={6}>
+                        <ThunderboltOutlined />
+                        不限速
+                      </Space>
+                    ),
+                    value: "unlimited",
+                  },
+                  {
+                    label: (
+                      <Space size={6}>
+                        <DashboardOutlined />
+                        限速
+                      </Space>
+                    ),
+                    value: "limited",
+                  },
+                ]}
               />
+              {speedLimitMode === "limited" ? (
+                <Space direction="vertical" size={10} style={{ width: "100%" }}>
+                  <InputNumber
+                    min={1}
+                    precision={0}
+                    addonAfter="KB/s"
+                    value={downloadSpeedLimitKbps ?? undefined}
+                    style={{ width: "100%" }}
+                    disabled={loading || savingSpeedLimit}
+                    placeholder="请输入下载限速"
+                    onChange={(value) =>
+                      setDownloadSpeedLimitKbps(
+                        typeof value === "number" ? value : null
+                      )
+                    }
+                    onBlur={() => {
+                      void saveDownloadSpeedLimitValue(downloadSpeedLimitKbps);
+                    }}
+                  />
+                  <Space size={6} wrap>
+                    <Typography.Text
+                      type="secondary"
+                      style={{ fontSize: 12, marginRight: 2 }}
+                    >
+                      快捷
+                    </Typography.Text>
+                    {SPEED_LIMIT_PRESETS.map((preset) => {
+                      const active = downloadSpeedLimitKbps === preset.value;
+                      return (
+                        <Button
+                          key={preset.value}
+                          size="small"
+                          type={active ? "primary" : "default"}
+                          disabled={loading || savingSpeedLimit}
+                          onClick={() => {
+                            setDownloadSpeedLimitKbps(preset.value);
+                            void saveDownloadSpeedLimitValue(preset.value);
+                          }}
+                        >
+                          {preset.label}
+                        </Button>
+                      );
+                    })}
+                  </Space>
+                </Space>
+              ) : (
+                <Typography.Text
+                  type="secondary"
+                  style={{ fontSize: 12, lineHeight: 1.6 }}
+                >
+                  当前不限制下载速度，将以最大可用带宽下载。
+                </Typography.Text>
+              )}
             </div>
           </Space>
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
@@ -624,11 +717,12 @@ export function SettingsModal({
       key: "ffmpeg",
       label: "FFmpeg",
       children: (
-        <Space direction="vertical" size={18} style={{ width: "100%" }}>
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             FFmpeg 是一个专业的音视频处理工具，部分转码和合成功能会依赖它。
-            如果你想获得更佳的体验，请无脑下载FFmpeg
+            如果你想获得更佳的体验，请无脑下载 FFmpeg
           </Typography.Paragraph>
+
           <Space style={{ width: "100%", justifyContent: "space-between" }}>
             <Typography.Text strong>开启 FFmpeg</Typography.Text>
             <Switch
@@ -639,26 +733,95 @@ export function SettingsModal({
               }}
             />
           </Space>
-          <Space direction="vertical" size={8} style={{ width: "100%" }}>
-            <Typography.Text strong>状态</Typography.Text>
-            <Space size={12} align="center">
-              {ffmpegStatus?.kind === "installed" ? (
-                <Typography.Text type="success">
-                  已安装 (v{ffmpegStatus.version})
-                </Typography.Text>
-              ) : (
-                <Typography.Text type="danger">未安装</Typography.Text>
-              )}
-            </Space>
-            {ffmpegStatus?.kind === "installed" && (
-              <Typography.Text
-                type="secondary"
-                style={{ fontSize: 12, wordBreak: "break-all" }}
-              >
-                {ffmpegStatus.path}
-              </Typography.Text>
+
+          <Card
+            size="small"
+            title={
+              <Space>
+                <DashboardOutlined />
+                <span>环境检测</span>
+              </Space>
+            }
+            styles={{ body: { padding: "10px 16px" } }}
+          >
+            {ffmpegStatus ? (
+              (() => {
+                const ffmpegInfo =
+                  ffmpegStatus.kind === "installed"
+                    ? {
+                        path: ffmpegStatus.path,
+                        version: ffmpegStatus.version,
+                      }
+                    : ffmpegStatus.ffmpeg;
+                const ffprobeInfo =
+                  ffmpegStatus.kind === "installed"
+                    ? ffmpegStatus.ffprobe
+                    : ffmpegStatus.ffprobe;
+
+                const renderStatusRow = (
+                  name: string,
+                  info: { path: string; version: string } | null
+                ) => (
+                  <div style={{ marginBottom: name === "ffmpeg" ? 12 : 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 4,
+                      }}
+                    >
+                      <Typography.Text strong>{name}</Typography.Text>
+                      {info ? (
+                        <Tag
+                          color="success"
+                          icon={<CheckCircleFilled />}
+                          style={{ marginInlineEnd: 0 }}
+                        >
+                          已就绪 (v{info.version})
+                        </Tag>
+                      ) : (
+                        <Tag
+                          color="error"
+                          icon={<CloseCircleFilled />}
+                          style={{ marginInlineEnd: 0 }}
+                        >
+                          未找到
+                        </Tag>
+                      )}
+                    </div>
+                    {info && (
+                      <Typography.Text
+                        type="secondary"
+                        style={{
+                          display: "block",
+                          fontSize: 12,
+                          wordBreak: "break-all",
+                          padding: "4px 8px",
+                          background: token.colorFillQuaternary,
+                          borderRadius: token.borderRadiusSM,
+                        }}
+                      >
+                        {info.path}
+                      </Typography.Text>
+                    )}
+                  </div>
+                );
+
+                return (
+                  <div>
+                    {renderStatusRow("ffmpeg", ffmpegInfo)}
+                    {renderStatusRow("ffprobe", ffprobeInfo)}
+                  </div>
+                );
+              })()
+            ) : (
+              <div style={{ textAlign: "center", padding: "8px 0" }}>
+                <Badge status="processing" text="正在检测环境..." />
+              </div>
             )}
-          </Space>
+          </Card>
+
           {ffmpegEnabled && ffmpegStatus?.kind !== "installed" && (
             <Space direction="vertical" size={8} style={{ width: "100%" }}>
               <Typography.Text strong>自动下载</Typography.Text>
@@ -674,14 +837,21 @@ export function SettingsModal({
               </Button>
             </Space>
           )}
+
           <Space direction="vertical" size={8} style={{ width: "100%" }}>
             <Typography.Text strong>自定义路径</Typography.Text>
             <Space size={8}>
-              <Button disabled={!ffmpegEnabled} onClick={() => void handleSetFfmpegCustomPath()}>
+              <Button
+                disabled={!ffmpegEnabled}
+                onClick={() => void handleSetFfmpegCustomPath()}
+              >
                 选择文件
               </Button>
               {ffmpegCustomPath && (
-                <Button disabled={!ffmpegEnabled} onClick={() => void handleResetFfmpegPath()}>
+                <Button
+                  disabled={!ffmpegEnabled}
+                  onClick={() => void handleResetFfmpegPath()}
+                >
                   重置
                 </Button>
               )}
