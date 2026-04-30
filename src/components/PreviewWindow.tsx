@@ -364,6 +364,7 @@ export function PreviewWindow() {
         {thumbnails.length > 0 ? (
           <div style={{ position: "relative" }}>
             <Image.PreviewGroup
+              items={thumbnails.map((thumb) => convertFileSrc(thumb.path))}
               preview={{
                 imageRender: renderLargePreviewImage,
                 actionsRender: renderPreviewActions,
