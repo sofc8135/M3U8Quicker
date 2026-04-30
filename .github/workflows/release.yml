@@ -160,3 +160,43 @@ jobs:
         with:
           tag_name: ${{ github.event.inputs.tag_name || github.event.release.tag_name || github.ref_name }}
           files: ${{ steps.portable-windows.outputs.archive_path }}
+
+  update-readme-download-links:
+    name: Update README download links
+    needs: publish-tauri
+    if: github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Update README download links
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_ID: ${{ github.event.inputs.release_id || github.event.release.id || '' }}
+          RELEASE_TAG: ${{ github.event.inputs.tag_name || github.event.release.tag_name || github.ref_name }}
+        run: node scripts/update-readme-download-links.mjs
+
+      - name: Commit README changes
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag_name || github.event.release.tag_name || github.ref_name }}
+        run: |
+          if git diff --quiet -- README.md; then
+            echo "README download links are already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs: update release download links to ${RELEASE_TAG}"
+          git push
